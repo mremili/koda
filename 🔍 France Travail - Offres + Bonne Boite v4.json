@@ -1,5 +1,5 @@
 {
-  "name": "🔍 France Travail - Offres + Bonne Alternance v5",
+  "name": "🔍 Koda - Offres + Alternance + Formations v6",
   "nodes": [
     {
       "parameters": {},
@@ -64,7 +64,7 @@
       "typeVersion": 4.2,
       "position": [
         -192,
-        -128
+        -192
       ]
     },
     {
@@ -112,7 +112,7 @@
       "typeVersion": 4.2,
       "position": [
         128,
-        -128
+        -192
       ]
     },
     {
@@ -125,7 +125,7 @@
       "typeVersion": 2,
       "position": [
         416,
-        -128
+        -192
       ]
     },
     {
@@ -173,7 +173,7 @@
       "typeVersion": 4.2,
       "position": [
         128,
-        128
+        64
       ]
     },
     {
@@ -186,7 +186,76 @@
       "typeVersion": 2,
       "position": [
         416,
-        128
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.apprentissage.beta.gouv.fr/api/formation/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "48.8566"
+            },
+            {
+              "name": "longitude",
+              "value": "2.3522"
+            },
+            {
+              "name": "radius",
+              "value": "30"
+            },
+            {
+              "name": "romes",
+              "value": "G1602,G1603,G1605,N1103,N1105,F1702,F1603,F1613,K2204,D1507,D1106,D1102,A1203,I1606,K1303,H2301,I1304"
+            },
+            {
+              "name": "page_size",
+              "value": "100"
+            },
+            {
+              "name": "page_index",
+              "value": "0"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer eyJhbGciOiJIUzI1NiJ9.eyJfaWQiOiI2OWNiZGZiYzI5YjNlMDJmN2NkYjU0YTMiLCJhcGlfa2V5IjoieXBkNi95WkhnVDhPK25vdUxTRkFlcTVoWTl2OWFWeHFWK2hhU3NkT0phTT0iLCJvcmdhbmlzYXRpb24iOm51bGwsImVtYWlsIjoibW91cmFkLnJlbWlsaUBsZXMtb21icmVzLmNvbSIsImlzcyI6ImFwaSIsImlhdCI6MTc3NDk2ODc3NiwiZXhwIjoxODA2NTA0Nzc2fQ.5iKGnjdiuBPfRMV6rGJ12jmCyNf3WcrdUJDTGQaZwkg"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "🎓 Chercher Formations IDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🎓 Formater les formations en apprentissage\n// ============================================\n\nconst data = $input.first().json;\nconst formations = data.data || [];\nconst pagination = data.pagination || {};\n\nconst formationsFormatees = formations.map(f => ({\n  cle_ministere: f.identifiant?.cle_ministere_educatif || '',\n  statut: f.statut?.catalogue || '',\n  // Certification\n  certification_connue: f.certification?.connue || false,\n  intitule_certification: f.certification?.valeur?.intitule_long || f.certification?.valeur?.intitule_court || '',\n  niveau_certification: f.certification?.valeur?.niveau?.libelle || '',\n  code_rncp: f.certification?.valeur?.rncp || '',\n  // Formateur\n  formateur_nom: f.formateur?.organisme?.raison_sociale || '',\n  formateur_siret: f.formateur?.organisme?.siret || '',\n  formateur_uai: f.formateur?.organisme?.uai || '',\n  formateur_connu: f.formateur?.connu || false,\n  // Responsable\n  responsable_nom: f.responsable?.organisme?.raison_sociale || '',\n  responsable_siret: f.responsable?.organisme?.siret || '',\n  // Lieu\n  ville: f.lieu?.adresse?.ville || '',\n  code_postal: f.lieu?.adresse?.code_postal || '',\n  adresse_complete: [f.lieu?.adresse?.numero, f.lieu?.adresse?.voie, f.lieu?.adresse?.code_postal, f.lieu?.adresse?.ville].filter(Boolean).join(' '),\n  siret_lieu: f.lieu?.siret || '',\n  uai_lieu: f.lieu?.uai || '',\n  // Contact\n  email: f.contact?.email || '',\n  telephone: f.contact?.telephone || '',\n  // Modalité\n  a_distance: f.modalite?.entierement_a_distance || false,\n  duree_indicative: f.modalite?.duree_indicative || 0,\n  annee_cycle: f.modalite?.annee_cycle || null,\n  // Contenu\n  objectif: (f.contenu_educatif?.objectif || '').substring(0, 300),\n  contenu: (f.contenu_educatif?.contenu || '').substring(0, 300),\n  // ONISEP\n  onisep_url: f.onisep?.url || '',\n  onisep_intitule: f.onisep?.intitule || '',\n  // Sessions\n  nb_sessions: (f.sessions || []).length,\n  prochaine_session: (f.sessions || []).length > 0 ? f.sessions[0].debut : '',\n  capacite: (f.sessions || []).length > 0 ? f.sessions[0].capacite : null\n}));\n\n// Stats\nconst parVille = formationsFormatees.reduce((acc, f) => {\n  const v = f.ville || 'Non précisé';\n  acc[v] = (acc[v] || 0) + 1;\n  return acc;\n}, {});\n\nconst parNiveau = formationsFormatees.reduce((acc, f) => {\n  const n = f.niveau_certification || 'Non précisé';\n  acc[n] = (acc[n] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'Formations Apprentissage',\n    zone: 'Paris + 30km',\n    nb_formations: formationsFormatees.length,\n    total_pages: pagination.page_count || 0,\n    page_actuelle: pagination.page_index || 0,\n    par_ville: parVille,\n    par_niveau: parNiveau,\n    formations: formationsFormatees\n  }\n}];"
+      },
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "name": "⚙️ Formater Formations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        320
       ]
     }
   ],
@@ -202,6 +271,11 @@
           },
           {
             "node": "📋 Chercher Alternance IDF",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🎓 Chercher Formations IDF",
             "type": "main",
             "index": 0
           }
@@ -235,6 +309,17 @@
         [
           {
             "node": "⚙️ Formater Alternance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎓 Chercher Formations IDF": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Formater Formations",
             "type": "main",
             "index": 0
           }
