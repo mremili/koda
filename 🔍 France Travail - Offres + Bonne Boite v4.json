@@ -278,13 +278,7 @@
             "node": "📋 Chercher Offres IDF",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "🔐 Token Bonne Boite": {
-      "main": [
-        [
+          },
           {
             "node": "🏢 Bonne Boite - Multi-secteurs Paris",
             "type": "main",
