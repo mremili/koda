@@ -52,7 +52,7 @@
             },
             {
               "name": "scope",
-              "value": "api_offresdemploiv2 o2dsoffre api_labonneboitev2"
+              "value": "api_offresdemploiv2 o2dsoffre"
             }
           ]
         },
@@ -262,11 +262,6 @@
             "node": "🔐 Token Offres",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "🔐 Token Bonne Boite",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -276,11 +271,6 @@
         [
           {
             "node": "📋 Chercher Offres IDF",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "🏢 Bonne Boite - Multi-secteurs Paris",
             "type": "main",
             "index": 0
           }
