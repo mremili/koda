@@ -95,7 +95,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.lba_url }}",
+        "url": "={{ $('⚙️ Construire requêtes par jeune').first().json.lba_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -190,15 +190,14 @@
     "⚙️ Construire requêtes par jeune": {
       "main": [
         [
-          { "node": "📡 Appel France Travail", "type": "main", "index": 0 },
-          { "node": "📡 Appel Bonne Alternance", "type": "main", "index": 0 }
+          { "node": "📡 Appel France Travail", "type": "main", "index": 0 }
         ]
       ]
     },
     "📡 Appel France Travail": {
       "main": [
         [
-          { "node": "🎯 Scorer les offres", "type": "main", "index": 0 }
+          { "node": "📡 Appel Bonne Alternance", "type": "main", "index": 0 }
         ]
       ]
     },
