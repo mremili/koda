@@ -169,19 +169,18 @@
     "▶️ Lancer le matching": {
       "main": [
         [
-          { "node": "📋 Lire jeunes éligibles", "type": "main", "index": 0 },
           { "node": "🔐 Token France Travail", "type": "main", "index": 0 }
         ]
       ]
     },
-    "📋 Lire jeunes éligibles": {
+    "🔐 Token France Travail": {
       "main": [
         [
-          { "node": "⚙️ Construire requêtes par jeune", "type": "main", "index": 0 }
+          { "node": "📋 Lire jeunes éligibles", "type": "main", "index": 0 }
         ]
       ]
     },
-    "🔐 Token France Travail": {
+    "📋 Lire jeunes éligibles": {
       "main": [
         [
           { "node": "⚙️ Construire requêtes par jeune", "type": "main", "index": 0 }
