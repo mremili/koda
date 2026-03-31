@@ -107,7 +107,7 @@
             },
             {
               "name": "scope",
-              "value": "application_PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c api_labonneboitev2"
+              "value": "api_labonneboitev1"
             }
           ]
         },
@@ -172,33 +172,25 @@
     },
     {
       "parameters": {
-        "url": "https://api.francetravail.io/partenaire/labonneboite/v2/recherche",
+        "url": "https://api.francetravail.io/partenaire/labonneboite/v1/company/",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
-              "name": "rome",
+              "name": "rome_codes",
               "value": "G1602,G1603,F1702,F1603,N1103,D1507"
             },
             {
-              "name": "department_number",
-              "value": "75"
+              "name": "latitude",
+              "value": "48.8566"
+            },
+            {
+              "name": "longitude",
+              "value": "2.3522"
             },
             {
               "name": "distance",
               "value": "20"
-            },
-            {
-              "name": "page_size",
-              "value": "50"
-            },
-            {
-              "name": "sort_by",
-              "value": "hiring_potential"
-            },
-            {
-              "name": "sort_direction",
-              "value": "desc"
             }
           ]
         },
@@ -241,7 +233,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🏢 Formater La Bonne Boite v2\n// ============================================\n\nconst bbData = $node['🏢 Bonne Boite - Multi-secteurs Paris'].json;\nconst items = bbData.items || [];\nconst totalHits = bbData.hits || 0;\n\nif (items.length === 0) {\n  return [{\n    json: {\n      source: 'La Bonne Boite v2',\n      status: 'Aucun résultat ou erreur API',\n      hits: totalHits,\n      raw_keys: Object.keys(bbData),\n      raw_preview: JSON.stringify(bbData).substring(0, 500),\n      conseil: 'Scope actuel ne marche pas. Essayer: labonneboite / api_labonneboitev1 / o2dsoffre api_labonneboitev2'\n    }\n  }];\n}\n\nconst entreprisesFormatees = items.map(e => ({\n  id: e.id,\n  siret: e.siret,\n  nom: e.company_name || e.office_name || 'Inconnu',\n  nom_emplacement: e.office_name || '',\n  ville: e.location?.city || '',\n  code_postal: e.location?.postcode || '',\n  departement: e.location?.department || '',\n  region: e.location?.region || '',\n  code_naf: e.naf || '',\n  secteur: e.naf_label || '',\n  effectif_min: e.headcount_min,\n  effectif_max: e.headcount_max,\n  potentiel_embauche: e.hiring_potential,\n  fort_potentiel: e.is_high_potential || false,\n  code_rome: e.rome || ''\n}));\n\nconst parSecteur = entreprisesFormatees.reduce((acc, e) => {\n  const s = e.secteur || 'Non classé';\n  acc[s] = (acc[s] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'La Bonne Boite v2',\n    zone: 'Paris + 20km',\n    total_hits: totalHits,\n    nb_retournes: entreprisesFormatees.length,\n    nb_fort_potentiel: entreprisesFormatees.filter(e => e.fort_potentiel).length,\n    par_secteur: parSecteur,\n    top_20: entreprisesFormatees.slice(0, 20),\n    toutes: entreprisesFormatees\n  }\n}];"
+        "jsCode": "// ============================================\n// 🏢 Formater La Bonne Boite v1\n// ============================================\n\nconst bbData = $node['🏢 Bonne Boite - Multi-secteurs Paris'].json;\nconst companies = bbData.companies || [];\nconst totalCount = bbData.companies_count || companies.length;\n\nif (companies.length === 0) {\n  return [{\n    json: {\n      source: 'La Bonne Boite v1',\n      status: 'Aucun résultat',\n      companies_count: totalCount,\n      raw_keys: Object.keys(bbData),\n      raw_preview: JSON.stringify(bbData).substring(0, 500)\n    }\n  }];\n}\n\nconst entreprisesFormatees = companies.map(e => ({\n  siret: e.siret || '',\n  nom: e.name || e.label || 'Inconnu',\n  ville: e.city || '',\n  code_naf: e.naf || '',\n  secteur: e.naf_text || '',\n  effectif: e.headcount_text || '',\n  score_embauche: e.stars || 0,\n  latitude: e.lat,\n  longitude: e.lon,\n  url: e.url || '',\n  contact_mode: e.contact_mode || ''\n}));\n\nconst parSecteur = entreprisesFormatees.reduce((acc, e) => {\n  const s = e.secteur || 'Non classé';\n  acc[s] = (acc[s] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'La Bonne Boite v1',\n    zone: 'Paris + 20km',\n    total_count: totalCount,\n    nb_retournes: entreprisesFormatees.length,\n    par_secteur: parSecteur,\n    top_20: entreprisesFormatees.slice(0, 20),\n    toutes: entreprisesFormatees\n  }\n}];"
       },
       "id": "04fd9c6f-f845-4a3c-ac26-c33829b7394f",
       "name": "⚙️ Formater Bonne Boite",
