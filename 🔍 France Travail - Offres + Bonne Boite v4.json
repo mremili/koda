@@ -52,7 +52,7 @@
             },
             {
               "name": "scope",
-              "value": "api_offresdemploiv2 o2dsoffre"
+              "value": "api_offresdemploiv2 o2dsoffre api_labonneboitev2"
             }
           ]
         },
@@ -207,7 +207,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $node['🔐 Token Bonne Boite'].json.access_token }}"
+              "value": "=Bearer {{ $node['🔐 Token Offres'].json.access_token }}"
             },
             {
               "name": "Accept",
