@@ -1,0 +1,330 @@
+{
+  "name": "🔍 France Travail - Offres + Bonne Boite v4",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c791bd1f-1d2e-43a1-bc80-195d172bda7c",
+      "name": "▶️ Lancer le test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://entreprise.francetravail.fr/connexion/oauth2/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "realm",
+              "value": "/partenaire"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "client_credentials"
+            },
+            {
+              "name": "client_id",
+              "value": "=PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c"
+            },
+            {
+              "name": "client_secret",
+              "value": "=4483b16708d055691dbccd701be5a5d7fa6701c89c53a2c49b9322b542952cfa"
+            },
+            {
+              "name": "scope",
+              "value": "api_offresdemploiv2 o2dsoffre"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9c01380d-cfda-474e-bd1b-6e9ac884171c",
+      "name": "🔐 Token Offres",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://entreprise.francetravail.fr/connexion/oauth2/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "realm",
+              "value": "/partenaire"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "client_credentials"
+            },
+            {
+              "name": "client_id",
+              "value": "=PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c"
+            },
+            {
+              "name": "client_secret",
+              "value": "=4483b16708d055691dbccd701be5a5d7fa6701c89c53a2c49b9322b542952cfa"
+            },
+            {
+              "name": "scope",
+              "value": "application_PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c api_labonneboitev2"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8c359fd8-fbcf-4922-953a-3417ab054fcc",
+      "name": "🔐 Token Bonne Boite",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "departement",
+              "value": "75"
+            },
+            {
+              "name": "distance",
+              "value": "20"
+            },
+            {
+              "name": "codeROME",
+              "value": "G1602,G1603,G1605,N1103,N1105,F1702,F1603,F1613,K2204,D1507,D1106,D1102,A1203,I1606,K1303,H2301,I1304"
+            },
+            {
+              "name": "range",
+              "value": "0-149"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $node['🔐 Token Offres'].json.access_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0e481692-488b-4bb5-a806-9effb5135d3a",
+      "name": "📋 Chercher Offres IDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.francetravail.io/partenaire/labonneboite/v2/recherche",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "rome",
+              "value": "G1602,G1603,F1702,F1603,N1103,D1507"
+            },
+            {
+              "name": "department_number",
+              "value": "75"
+            },
+            {
+              "name": "distance",
+              "value": "20"
+            },
+            {
+              "name": "page_size",
+              "value": "50"
+            },
+            {
+              "name": "sort_by",
+              "value": "hiring_potential"
+            },
+            {
+              "name": "sort_direction",
+              "value": "desc"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $node['🔐 Token Bonne Boite'].json.access_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0043505c-91c0-4f45-a037-6ec647ebf907",
+      "name": "🏢 Bonne Boite - Multi-secteurs Paris",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 📊 Formater les offres d'emploi v2\n// ============================================\n\nconst offresData = $node['📋 Chercher Offres IDF'].json;\nconst resultats = offresData.resultats || [];\n\nconst ROME_SECTEURS = {\n  'G1602': 'Restauration',\n  'G1603': 'Restauration',\n  'G1605': 'Restauration',\n  'N1103': 'Logistique',\n  'N1105': 'Logistique',\n  'F1702': 'BTP - Maçonnerie',\n  'F1603': 'BTP - Plomberie',\n  'F1613': 'BTP - Étanchéité',\n  'K2204': 'Nettoyage',\n  'D1507': 'Commerce - Mise en rayon',\n  'D1106': 'Commerce - Vente',\n  'D1102': 'Boulangerie',\n  'A1203': 'Paysagisme',\n  'I1606': 'Carrosserie',\n  'K1303': 'Petite enfance',\n  'H2301': 'Production industrielle',\n  'I1304': 'Maintenance industrielle'\n};\n\nconst offresFormatees = resultats.map(offre => {\n  const codeRome = offre.romeCode || '';\n  return {\n    id: offre.id,\n    titre: offre.intitule,\n    entreprise: offre.entreprise?.nom || 'Non communiqué',\n    lieu: offre.lieuTravail?.libelle || 'Non précisé',\n    code_postal: offre.lieuTravail?.codePostal || '',\n    contrat: offre.typeContratLibelle || offre.typeContrat || '',\n    nature_contrat: offre.natureContrat || '',\n    est_alternance: offre.alternance === true,\n    salaire: offre.salaire?.libelle || 'Non communiqué',\n    experience: offre.experienceExige || 'Non précisé',\n    competences: (offre.competences || []).map(c => c.libelle).join(', '),\n    description_courte: (offre.description || '').substring(0, 300) + '...',\n    url_offre: offre.origineOffre?.urlOrigine || `https://candidat.francetravail.fr/offres/recherche/detail/${offre.id}`,\n    date_creation: offre.dateCreation,\n    code_rome: codeRome,\n    metier: offre.romeLibelle,\n    secteur_ombres: ROME_SECTEURS[codeRome] || 'Autre',\n    qualification: offre.qualificationLibelle || '',\n    niveau_langue_requis: (offre.langues || []).map(l => `${l.libelle}: ${l.exigence}`).join(', ') || 'Non précisé',\n    permis_requis: (offre.permis || []).map(p => p.libelle).join(', ') || 'Non requis',\n    debutant_accepte: offre.experienceExige === 'D',\n    formations: (offre.formations || []).map(f => f.niveauLibelle).join(', ') || 'Non précisé'\n  };\n});\n\nconst stats = {\n  total_disponibles: offresData.contentRange?.maxResults || resultats.length,\n  nb_retournes: offresFormatees.length,\n  nb_alternance: offresFormatees.filter(o => o.est_alternance).length,\n  nb_debutant_accepte: offresFormatees.filter(o => o.debutant_accepte).length,\n  par_secteur: offresFormatees.reduce((acc, o) => {\n    acc[o.secteur_ombres] = (acc[o.secteur_ombres] || 0) + 1;\n    return acc;\n  }, {}),\n  par_contrat: offresFormatees.reduce((acc, o) => {\n    acc[o.contrat] = (acc[o.contrat] || 0) + 1;\n    return acc;\n  }, {})\n};\n\nreturn [{ json: { ...stats, offres: offresFormatees } }];"
+      },
+      "id": "52b360fb-49c1-4a59-9ffd-f0456b88c456",
+      "name": "⚙️ Formater Offres",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🏢 Formater La Bonne Boite v2\n// ============================================\n\nconst bbData = $node['🏢 Bonne Boite - Multi-secteurs Paris'].json;\nconst items = bbData.items || [];\nconst totalHits = bbData.hits || 0;\n\nif (items.length === 0) {\n  return [{\n    json: {\n      source: 'La Bonne Boite v2',\n      status: 'Aucun résultat ou erreur API',\n      hits: totalHits,\n      raw_keys: Object.keys(bbData),\n      raw_preview: JSON.stringify(bbData).substring(0, 500),\n      conseil: 'Scope actuel ne marche pas. Essayer: labonneboite / api_labonneboitev1 / o2dsoffre api_labonneboitev2'\n    }\n  }];\n}\n\nconst entreprisesFormatees = items.map(e => ({\n  id: e.id,\n  siret: e.siret,\n  nom: e.company_name || e.office_name || 'Inconnu',\n  nom_emplacement: e.office_name || '',\n  ville: e.location?.city || '',\n  code_postal: e.location?.postcode || '',\n  departement: e.location?.department || '',\n  region: e.location?.region || '',\n  code_naf: e.naf || '',\n  secteur: e.naf_label || '',\n  effectif_min: e.headcount_min,\n  effectif_max: e.headcount_max,\n  potentiel_embauche: e.hiring_potential,\n  fort_potentiel: e.is_high_potential || false,\n  code_rome: e.rome || ''\n}));\n\nconst parSecteur = entreprisesFormatees.reduce((acc, e) => {\n  const s = e.secteur || 'Non classé';\n  acc[s] = (acc[s] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'La Bonne Boite v2',\n    zone: 'Paris + 20km',\n    total_hits: totalHits,\n    nb_retournes: entreprisesFormatees.length,\n    nb_fort_potentiel: entreprisesFormatees.filter(e => e.fort_potentiel).length,\n    par_secteur: parSecteur,\n    top_20: entreprisesFormatees.slice(0, 20),\n    toutes: entreprisesFormatees\n  }\n}];"
+      },
+      "id": "04fd9c6f-f845-4a3c-ac26-c33829b7394f",
+      "name": "⚙️ Formater Bonne Boite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        128
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "▶️ Lancer le test": {
+      "main": [
+        [
+          {
+            "node": "🔐 Token Offres",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🔐 Token Bonne Boite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Token Offres": {
+      "main": [
+        [
+          {
+            "node": "📋 Chercher Offres IDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Token Bonne Boite": {
+      "main": [
+        [
+          {
+            "node": "🏢 Bonne Boite - Multi-secteurs Paris",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Chercher Offres IDF": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Formater Offres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏢 Bonne Boite - Multi-secteurs Paris": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Formater Bonne Boite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "14ba5c41-89dd-4aa2-be63-e2f9ed2001c6",
+  "meta": {
+    "instanceId": "cadbaef72f33bff1eacd1337b3bcd83c94a890e0f3bd8e6c900dfd98ca78d63e"
+  },
+  "id": "8VQ4daPdxZKqCaF8",
+  "tags": []
+}
