@@ -130,7 +130,7 @@
     },
     {
       "parameters": {
-        "url": "https://api.apprentissage.beta.gouv.fr/job/v1/search",
+        "url": "https://api.apprentissage.beta.gouv.fr/api/job/v1/search",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
