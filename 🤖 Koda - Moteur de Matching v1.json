@@ -1,0 +1,239 @@
+{
+  "name": "🤖 Koda - Moteur de Matching v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-001",
+      "name": "▶️ Lancer le matching",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT airtable_id, prenom, codes_rome_suggeres, departement, ville, niveau_francais_declare, classe, disponibilite, secteurs_interet FROM jeunes WHERE enrichi_par_ia = true AND pret_a_postuler = true AND codes_rome_suggeres IS NOT NULL AND situation_actuelle NOT LIKE '%Déjà en%' AND situation_actuelle NOT LIKE '%décroché%' AND situation_actuelle NOT LIKE '%trouvé%'",
+        "options": {}
+      },
+      "id": "read-jeunes-001",
+      "name": "📋 Lire jeunes éligibles",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-350, 0],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://entreprise.francetravail.fr/connexion/oauth2/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "realm", "value": "/partenaire" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/x-www-form-urlencoded" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "grant_type", "value": "client_credentials" },
+            { "name": "client_id", "value": "=PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c" },
+            { "name": "client_secret", "value": "=4483b16708d055691dbccd701be5a5d7fa6701c89c53a2c49b9322b542952cfa" },
+            { "name": "scope", "value": "api_offresdemploiv2 o2dsoffre" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "token-ft-001",
+      "name": "🔐 Token France Travail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-350, 250]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔄 Pour chaque jeune, construire les requêtes API\n// ============================================\n\nconst jeunes = $node['📋 Lire jeunes éligibles'].all();\nconst token = $node['🔐 Token France Travail'].first().json.access_token;\n\nconst results = [];\n\nfor (const item of jeunes) {\n  const j = item.json;\n  const dept = j.departement || '75';\n  const romes = j.codes_rome_suggeres;\n  \n  // Coordonnées approximatives par département pour La Bonne Alternance\n  const deptCoords = {\n    '06': { lat: 43.7102, lon: 7.2620 },\n    '13': { lat: 43.2965, lon: 5.3698 },\n    '33': { lat: 44.8378, lon: -0.5792 },\n    '34': { lat: 43.6110, lon: 3.8767 },\n    '35': { lat: 48.1173, lon: -1.6778 },\n    '44': { lat: 47.2184, lon: -1.5536 },\n    '59': { lat: 50.6292, lon: 3.0573 },\n    '69': { lat: 45.7640, lon: 4.8357 },\n    '75': { lat: 48.8566, lon: 2.3522 },\n    '77': { lat: 48.5272, lon: 2.6987 },\n    '78': { lat: 48.8014, lon: 2.1301 },\n    '89': { lat: 47.7973, lon: 3.5674 },\n    '91': { lat: 48.6293, lon: 2.4396 },\n    '92': { lat: 48.8283, lon: 2.2399 },\n    '93': { lat: 48.9100, lon: 2.4200 },\n    '94': { lat: 48.7904, lon: 2.4753 },\n    '95': { lat: 49.0354, lon: 2.0733 }\n  };\n  const coords = deptCoords[dept] || deptCoords['75'];\n  \n  results.push({\n    json: {\n      jeune: j,\n      token: token,\n      ft_url: `https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?departement=${dept}&distance=20&codeROME=${romes}&range=0-49`,\n      lba_url: `https://api.apprentissage.beta.gouv.fr/api/job/v1/search?latitude=${coords.lat}&longitude=${coords.lon}&radius=25&romes=${romes}`,\n      coords: coords\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "build-queries-001",
+      "name": "⚙️ Construire requêtes par jeune",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-50, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.ft_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } },
+          "timeout": 10000
+        }
+      },
+      "id": "call-ft-001",
+      "name": "📡 Appel France Travail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, -100],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.lba_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer eyJhbGciOiJIUzI1NiJ9.eyJfaWQiOiI2OWNiZGZiYzI5YjNlMDJmN2NkYjU0YTMiLCJhcGlfa2V5IjoieXBkNi95WkhnVDhPK25vdUxTRkFlcTVoWTl2OWFWeHFWK2hhU3NkT0phTT0iLCJvcmdhbmlzYXRpb24iOm51bGwsImVtYWlsIjoibW91cmFkLnJlbWlsaUBsZXMtb21icmVzLmNvbSIsImlzcyI6ImFwaSIsImlhdCI6MTc3NDk2ODc3NiwiZXhwIjoxODA2NTA0Nzc2fQ.5iKGnjdiuBPfRMV6rGJ12jmCyNf3WcrdUJDTGQaZwkg" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } },
+          "timeout": 10000
+        }
+      },
+      "id": "call-lba-001",
+      "name": "📡 Appel Bonne Alternance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 100],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🎯 MOTEUR DE SCORING\n// ============================================\n\nconst ftData = $node['📡 Appel France Travail'].first().json;\nconst lbaData = $node['📡 Appel Bonne Alternance'].first().json;\nconst jeune = $node['⚙️ Construire requêtes par jeune'].first().json.jeune;\n\nconst niveauFr = jeune.niveau_francais_declare || '';\nconst freinLangue = niveauFr.includes('Débutant') || niveauFr.includes('Non francophone');\nconst romesJeune = (jeune.codes_rome_suggeres || '').split(',').map(r => r.trim());\nconst deptJeune = jeune.departement || '';\n\n// --- Fonction de scoring ---\nfunction scoreOffre(offre, source) {\n  let score = 0;\n  const detail = {};\n\n  // 1. Correspondance ROME (30 pts)\n  const romeOffre = source === 'FT' ? (offre.romeCode || '') : '';\n  if (source === 'FT' && romesJeune.includes(romeOffre)) {\n    score += 30;\n    detail.rome = 30;\n  } else if (source === 'LBA') {\n    // LBA filtre déjà par ROME dans la requête\n    score += 25;\n    detail.rome = 25;\n  } else {\n    detail.rome = 0;\n  }\n\n  // 2. Débutant accepté (25 pts)\n  if (source === 'FT') {\n    const debutant = offre.experienceExige === 'D' || offre.experienceExige === 'S';\n    if (debutant) { score += 25; detail.debutant = 25; }\n    else { detail.debutant = 0; }\n  } else {\n    // Alternance = toujours ok pour débutant\n    score += 25;\n    detail.debutant = 25;\n  }\n\n  // 3. Proximité géographique (20 pts)\n  if (source === 'FT') {\n    const deptOffre = offre.lieuTravail?.codePostal?.substring(0, 2) || '';\n    if (deptOffre === deptJeune) { score += 20; detail.geo = 20; }\n    else if (['75','92','93','94'].includes(deptOffre) && ['75','92','93','94'].includes(deptJeune)) {\n      score += 15; detail.geo = 15; // Petite couronne\n    }\n    else { detail.geo = 0; }\n  } else {\n    // LBA filtre déjà par rayon\n    score += 15;\n    detail.geo = 15;\n  }\n\n  // 4. Pas d'exigence français si frein langue (15 pts)\n  if (freinLangue) {\n    if (source === 'FT') {\n      const langues = offre.langues || [];\n      if (langues.length === 0) { score += 15; detail.langue = 15; }\n      else { detail.langue = 0; }\n    } else {\n      score += 10; detail.langue = 10;\n    }\n  } else {\n    score += 15; detail.langue = 15; // Pas de frein = bonus auto\n  }\n\n  // 5. Pas de permis requis (5 pts)\n  if (source === 'FT') {\n    const permis = offre.permis || [];\n    if (permis.length === 0) { score += 5; detail.permis = 5; }\n    else { detail.permis = 0; }\n  } else {\n    score += 5; detail.permis = 5;\n  }\n\n  // 6. Alternance bonus si dispo alternance (5 pts)\n  const dispoAlternance = (jeune.disponibilite || '').toLowerCase().includes('alternance');\n  if (source === 'LBA' && dispoAlternance) {\n    score += 5; detail.type_contrat = 5;\n  } else if (source === 'FT' && offre.alternance === true && dispoAlternance) {\n    score += 5; detail.type_contrat = 5;\n  } else {\n    detail.type_contrat = 0;\n  }\n\n  return { score, detail };\n}\n\n// --- Scorer les offres France Travail ---\nconst offresFT = (ftData.resultats || []).map(o => {\n  const { score, detail } = scoreOffre(o, 'FT');\n  return {\n    source: 'France Travail',\n    offre_id: o.id,\n    titre: o.intitule,\n    entreprise: o.entreprise?.nom || 'Non communiqué',\n    lieu: o.lieuTravail?.libelle || '',\n    departement_offre: o.lieuTravail?.codePostal?.substring(0, 2) || '',\n    type_contrat: o.typeContratLibelle || o.typeContrat || '',\n    est_alternance: o.alternance === true,\n    debutant_accepte: o.experienceExige === 'D',\n    url_offre: o.origineOffre?.urlOrigine || `https://candidat.francetravail.fr/offres/recherche/detail/${o.id}`,\n    score: score,\n    score_detail: detail\n  };\n});\n\n// --- Scorer les offres La Bonne Alternance ---\nconst jobs = (lbaData.jobs || []).map(j => {\n  const { score, detail } = scoreOffre(j, 'LBA');\n  return {\n    source: 'La Bonne Alternance',\n    offre_id: j.identifier?.partner_job_id || j.identifier?.id || '',\n    titre: j.offer?.title || '',\n    entreprise: j.workplace?.name || 'Non communiqué',\n    lieu: j.workplace?.location?.city || '',\n    departement_offre: '',\n    type_contrat: (j.contract?.type || []).join(', '),\n    est_alternance: true,\n    debutant_accepte: true,\n    url_offre: j.apply?.url || '',\n    score: score,\n    score_detail: detail\n  };\n});\n\n// --- Fusionner, trier, garder top 5 au-dessus de 60 ---\nconst allOffres = [...offresFT, ...jobs]\n  .filter(o => o.score >= 60 && o.offre_id)\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 5);\n\n// --- Construire les INSERT SQL ---\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  return \"'\" + String(v).replace(/'/g, \"''\").substring(0, 2000) + \"'\";\n};\n\nconst results = [];\n\nfor (const o of allOffres) {\n  const sql = `INSERT INTO koda_matchs (jeune_id, source, offre_id, titre, entreprise, lieu, departement_offre, type_contrat, est_alternance, debutant_accepte, score, score_detail, url_offre, statut) VALUES (${esc(jeune.airtable_id)}, ${esc(o.source)}, ${esc(o.offre_id)}, ${esc(o.titre)}, ${esc(o.entreprise)}, ${esc(o.lieu)}, ${esc(o.departement_offre)}, ${esc(o.type_contrat)}, ${o.est_alternance}, ${o.debutant_accepte}, ${o.score}, '${JSON.stringify(o.score_detail).replace(/'/g, \"''\")}', ${esc(o.url_offre)}, 'nouvelle') ON CONFLICT (jeune_id, offre_id) DO NOTHING;`;\n  results.push({ json: { query: sql, jeune_prenom: jeune.prenom, offre_titre: o.titre, score: o.score } });\n}\n\nif (results.length === 0) {\n  results.push({ json: { query: null, jeune_prenom: jeune.prenom, offre_titre: 'Aucun match >= 60', score: 0 } });\n}\n\nreturn results;"
+      },
+      "id": "scoring-001",
+      "name": "🎯 Scorer les offres",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.query }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "filter-001",
+      "name": "🔀 Filtrer vides",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [750, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "id": "insert-match-001",
+      "name": "💾 Sauver dans koda_matchs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1000, 0],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "▶️ Lancer le matching": {
+      "main": [
+        [
+          { "node": "📋 Lire jeunes éligibles", "type": "main", "index": 0 },
+          { "node": "🔐 Token France Travail", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "📋 Lire jeunes éligibles": {
+      "main": [
+        [
+          { "node": "⚙️ Construire requêtes par jeune", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "🔐 Token France Travail": {
+      "main": [
+        [
+          { "node": "⚙️ Construire requêtes par jeune", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "⚙️ Construire requêtes par jeune": {
+      "main": [
+        [
+          { "node": "📡 Appel France Travail", "type": "main", "index": 0 },
+          { "node": "📡 Appel Bonne Alternance", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "📡 Appel France Travail": {
+      "main": [
+        [
+          { "node": "🎯 Scorer les offres", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "📡 Appel Bonne Alternance": {
+      "main": [
+        [
+          { "node": "🎯 Scorer les offres", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "🎯 Scorer les offres": {
+      "main": [
+        [
+          { "node": "🔀 Filtrer vides", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "🔀 Filtrer vides": {
+      "main": [
+        [
+          { "node": "💾 Sauver dans koda_matchs", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "matching-v1-001",
+  "meta": {
+    "instanceId": "cadbaef72f33bff1eacd1337b3bcd83c94a890e0f3bd8e6c900dfd98ca78d63e"
+  },
+  "id": "koda-matching-v1",
+  "tags": []
+}
