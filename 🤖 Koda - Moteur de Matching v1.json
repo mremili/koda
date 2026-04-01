@@ -245,7 +245,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"model\":\"claude-haiku-4-5-20251001\",\"max_tokens\":500,\"messages\":[{\"role\":\"user\",\"content\":{{ JSON.stringify($json.prompt) }}}]}",
+        "jsonBody": "={{ JSON.stringify({model: 'claude-haiku-4-5-20251001', max_tokens: 500, messages: [{role: 'user', content: $json.prompt}]}) }}",
         "options": {
           "timeout": 15000
         }
