@@ -344,11 +344,6 @@
             "node": "📋 Lire jeunes éligibles",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "📋 Charger passerelles",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -357,7 +352,7 @@
       "main": [
         [
           {
-            "node": "⚙️ Construire requêtes par jeune",
+            "node": "📋 Charger passerelles",
             "type": "main",
             "index": 0
           }
