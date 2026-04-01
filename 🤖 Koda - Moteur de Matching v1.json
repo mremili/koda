@@ -231,7 +231,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{$env.ANTHROPIC_API_KEY}}"
+              "value": "=COLLER_VOTRE_CLE_ANTHROPIC_ICI"
             },
             {
               "name": "anthropic-version",
