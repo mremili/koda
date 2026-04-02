@@ -6,10 +6,29 @@
         "inputSource": "passThrough"
       },
       "id": "rt-trigger-001",
-      "name": "⚡ Déclenché par Koda WA",
+      "name": "⚡ Déclenché par Agent Koda",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT codes_rome_suggeres, departement, ville, secteur_vise, disponibilite, besoins FROM jeunes WHERE telephone_normalized = '{{ $json.query || $json.chatInput || '' }}' OR airtable_id = '{{ $json.query || $json.chatInput || '' }}' LIMIT 1;",
+        "options": {}
+      },
+      "id": "rt-lookup-001",
+      "name": "📋 Charger profil jeune",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 0],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -43,17 +62,17 @@
       "name": "🔐 Token France Travail",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [250, 0]
+      "position": [500, 0]
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================================\n// ⚙️ Construire les URLs de recherche pour CE jeune\n// Input : données du jeune passées par le workflow parent\n// ============================================================================\n\nconst inputData = $('⚡ Déclenché par Koda WA').first().json;\nconst token = $('🔐 Token France Travail').first().json.access_token;\n\nconst jeune = inputData.jeune || inputData;\nconst dept = (jeune.departement || '75').trim();\n\n// Coordonnées par département\nconst deptCoords = {\n  '06': { lat: 43.7102, lon: 7.2620 },\n  '13': { lat: 43.2965, lon: 5.3698 },\n  '33': { lat: 44.8378, lon: -0.5792 },\n  '34': { lat: 43.6110, lon: 3.8767 },\n  '35': { lat: 48.1173, lon: -1.6778 },\n  '44': { lat: 47.2184, lon: -1.5536 },\n  '59': { lat: 50.6292, lon: 3.0573 },\n  '69': { lat: 45.7640, lon: 4.8357 },\n  '75': { lat: 48.8566, lon: 2.3522 },\n  '77': { lat: 48.5272, lon: 2.6987 },\n  '78': { lat: 48.8014, lon: 2.1301 },\n  '89': { lat: 47.7973, lon: 3.5674 },\n  '91': { lat: 48.6293, lon: 2.4396 },\n  '92': { lat: 48.8283, lon: 2.2399 },\n  '93': { lat: 48.9100, lon: 2.4200 },\n  '94': { lat: 48.7904, lon: 2.4753 },\n  '95': { lat: 49.0354, lon: 2.0733 }\n};\n\nconst coords = deptCoords[dept] || deptCoords['75'];\n\n// Parser les codes ROME\nconst romesStr = (jeune.codes_rome_suggeres || 'M1805').trim();\nconst romes = romesStr.split(',').map(r => r.trim()).filter(r => r.length > 0);\n\n// Construire les URLs\nconst ft_url = `https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?departement=${dept}&distance=20&codeROME=${romes.join(',')}&range=0-149`;\nconst lba_url = `https://api.apprentissage.beta.gouv.fr/api/job/v1/search?latitude=${coords.lat}&longitude=${coords.lon}&radius=25&romes=${romes.join(',')}`;\n\nreturn [{\n  json: {\n    jeune: {\n      airtable_id: jeune.airtable_id,\n      prenom: jeune.prenom,\n      codes_rome_suggeres: romesStr,\n      departement: dept,\n      ville: jeune.ville,\n      niveau_francais_declare: jeune.niveau_francais_declare,\n      classe: jeune.classe,\n      disponibilite: jeune.disponibilite,\n      secteurs_interet: jeune.secteur_vise || jeune.secteurs_interet,\n      besoins: jeune.besoins,\n      attentes_mentor: jeune.attentes_mentor,\n      mna: jeune.mna,\n      secteur_vise: jeune.secteur_vise,\n      skills_inferees: '',\n      frein_langue: false\n    },\n    romes_originaux: romes,\n    romes_elargis: romes,\n    token: token,\n    ft_url: ft_url,\n    lba_url: lba_url,\n    wa_phone: inputData.wa_phone,\n    phoneNumberId: inputData.phoneNumberId || '1107773802412902'\n  }\n}];"
+        "jsCode": "// Construire les URLs de recherche à partir du profil jeune\nconst jeuneResults = $('📋 Charger profil jeune').all();\nconst jeune = jeuneResults.length > 0 ? jeuneResults[0].json : {};\nconst token = $('🔐 Token France Travail').first().json.access_token;\n\nconst dept = (jeune.departement || '75').trim();\nconst romes = (jeune.codes_rome_suggeres || 'M1805').trim();\n\nconst deptCoords = {\n  '75': { lat: 48.8566, lon: 2.3522 },\n  '77': { lat: 48.5272, lon: 2.6987 },\n  '78': { lat: 48.8014, lon: 2.1301 },\n  '91': { lat: 48.6293, lon: 2.4396 },\n  '92': { lat: 48.8283, lon: 2.2399 },\n  '93': { lat: 48.9100, lon: 2.4200 },\n  '94': { lat: 48.7904, lon: 2.4753 },\n  '95': { lat: 49.0354, lon: 2.0733 },\n  '69': { lat: 45.7640, lon: 4.8357 },\n  '13': { lat: 43.2965, lon: 5.3698 },\n  '33': { lat: 44.8378, lon: -0.5792 },\n  '59': { lat: 50.6292, lon: 3.0573 },\n  '44': { lat: 47.2184, lon: -1.5536 },\n  '06': { lat: 43.7102, lon: 7.2620 },\n  '34': { lat: 43.6110, lon: 3.8767 },\n  '35': { lat: 48.1173, lon: -1.6778 }\n};\nconst coords = deptCoords[dept] || deptCoords['75'];\n\nconst ft_url = `https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?departement=${dept}&distance=20&codeROME=${romes}&range=0-49`;\nconst lba_url = `https://api.apprentissage.beta.gouv.fr/api/job/v1/search?latitude=${coords.lat}&longitude=${coords.lon}&radius=25&romes=${romes}`;\n\nreturn [{ json: { token, ft_url, lba_url, dept, romes } }];"
       },
       "id": "rt-build-001",
       "name": "⚙️ Construire requêtes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [500, 0]
+      "position": [750, 0]
     },
     {
       "parameters": {
@@ -71,7 +90,7 @@
       "name": "📡 France Travail",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, -100],
+      "position": [1000, -100],
       "onError": "continueRegularOutput"
     },
     {
@@ -90,65 +109,34 @@
       "name": "📡 La Bonne Alternance",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 100],
+      "position": [1000, 100],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================================\n// 🎯 SCORING SIMPLIFIÉ — top offres pour envoi WA immédiat\n// ============================================================================\n\nconst ftData = $('📡 France Travail').first().json;\nconst lbaData = $('📡 La Bonne Alternance').first().json;\nconst jeuneData = $('⚙️ Construire requêtes').first().json;\nconst jeune = jeuneData.jeune;\n\nconst deptJeune = (jeune.departement || '').trim();\nconst romesOriginaux = (jeune.codes_rome_suggeres || '').split(',').map(r => r.trim());\nconst PETITE_COURONNE = ['75','92','93','94'];\nconst IDF = ['75','92','93','94','77','78','91','95'];\n\n// Score offre FT\nfunction scoreOffre(o) {\n  let score = 0;\n  const romeOffre = o.romeCode || '';\n  if (romesOriginaux.includes(romeOffre)) score += 25;\n  else score += 10;\n  if (o.experienceExige === 'D' || o.experienceExige === 'S') score += 20;\n  const deptOffre = (o.lieuTravail?.codePostal || '').substring(0, 2);\n  if (deptOffre === deptJeune) score += 15;\n  else if (PETITE_COURONNE.includes(deptOffre) && PETITE_COURONNE.includes(deptJeune)) score += 10;\n  else if (IDF.includes(deptOffre) && IDF.includes(deptJeune)) score += 5;\n  if ((o.langues || []).length === 0) score += 10;\n  if ((o.permis || []).length === 0) score += 5;\n  const entreprise = o.entreprise?.nom || '';\n  if (entreprise && entreprise !== 'Non communiqué') score += 3;\n  return score;\n}\n\n// Scorer les offres FT\nconst offresFT = (ftData.resultats || []).map(o => ({\n  source: 'France Travail',\n  offre_id: o.id,\n  titre: o.intitule,\n  entreprise: o.entreprise?.nom || 'Entreprise confidentielle',\n  lieu: o.lieuTravail?.libelle || '',\n  type_contrat: o.typeContratLibelle || o.typeContrat || '',\n  url_offre: o.origineOffre?.urlOrigine || `https://candidat.francetravail.fr/offres/recherche/detail/${o.id}`,\n  score: scoreOffre(o)\n})).filter(o => o.score >= 45).sort((a, b) => b.score - a.score);\n\n// Scorer les jobs LBA\nconst jobsLBA = (lbaData.jobs || []).map(j => ({\n  source: 'La Bonne Alternance',\n  offre_id: j.identifier?.partner_job_id || j.identifier?.id || '',\n  titre: j.offer?.title || '',\n  entreprise: j.workplace?.name || 'Entreprise confidentielle',\n  lieu: j.workplace?.location?.city || '',\n  type_contrat: (j.contract?.type || []).join(', '),\n  url_offre: j.apply?.url || '',\n  score: 55\n}));\n\nconst topOffres = [...offresFT.slice(0, 7), ...jobsLBA.slice(0, 3)].slice(0, 10);\n\n// Formater le message WhatsApp directement (pas besoin de Haiku pour le temps réel)\nconst prenom = jeune.prenom || 'toi';\nlet waMessage = '';\n\nif (topOffres.length === 0) {\n  waMessage = `J'ai cherche dans ta zone et ton secteur mais je n'ai pas encore trouve d'offres qui collent parfaitement. Je continue a chercher et je te previens des que j'ai quelque chose !`;\n} else {\n  waMessage = `J'ai trouve ${topOffres.length} offre${topOffres.length > 1 ? 's' : ''} pour toi :\\n\\n`;\n  topOffres.slice(0, 5).forEach((o, i) => {\n    waMessage += `${i + 1}. ${o.titre}\\n`;\n    waMessage += `   ${o.entreprise} - ${o.lieu}\\n`;\n    waMessage += `   ${o.type_contrat}\\n`;\n    if (o.url_offre) waMessage += `   ${o.url_offre}\\n`;\n    waMessage += `\\n`;\n  });\n  waMessage += `Tu es interesse par une de ces offres ? Dis-moi le numero et je t'aide a postuler !`;\n}\n\nreturn [{\n  json: {\n    wa_phone: jeuneData.wa_phone,\n    phoneNumberId: jeuneData.phoneNumberId,\n    messageWhatsApp: waMessage,\n    topOffres: topOffres.slice(0, 5),\n    jeune: jeune,\n    debug: {\n      nb_ft: (ftData.resultats || []).length,\n      nb_lba_jobs: (lbaData.jobs || []).length,\n      nb_total_scored: topOffres.length\n    }\n  }\n}];"
+        "jsCode": "// ============================================================================\n// 🎯 Formater les résultats pour retour à l'agent\n// Le toolWorkflow doit retourner du TEXTE que l'agent peut utiliser\n// ============================================================================\n\nconst ftData = $('📡 France Travail').first().json;\nconst lbaData = $('📡 La Bonne Alternance').first().json;\n\n// Offres France Travail\nconst offresFT = (ftData.resultats || []).slice(0, 10).map((o, i) => {\n  const debutant = (o.experienceExige === 'D' || o.experienceExige === 'S') ? 'Débutant accepté' : 'Expérience demandée';\n  const url = o.origineOffre?.urlOrigine || `https://candidat.francetravail.fr/offres/recherche/detail/${o.id}`;\n  return `${i+1}. ${o.intitule} | ${o.entreprise?.nom || 'Confidentiel'} | ${o.lieuTravail?.libelle || ''} | ${o.typeContratLibelle || ''} | ${debutant} | ${url}`;\n}).join('\\n');\n\n// Jobs La Bonne Alternance\nconst jobsLBA = (lbaData.jobs || []).slice(0, 5).map((j, i) => {\n  const url = j.apply?.url || '';\n  return `${i+1}. ${j.offer?.title || 'Alternance'} | ${j.workplace?.name || 'Confidentiel'} | ${j.workplace?.location?.city || ''} | Alternance | ${url}`;\n}).join('\\n');\n\nconst nbFT = (ftData.resultats || []).length;\nconst nbLBA = (lbaData.jobs || []).length;\n\nlet result = `RÉSULTATS DE RECHERCHE (${nbFT} offres FT + ${nbLBA} alternances LBA)\\n\\n`;\n\nif (offresFT) {\n  result += `OFFRES D'EMPLOI (France Travail) :\\n${offresFT}\\n\\n`;\n}\n\nif (jobsLBA) {\n  result += `ALTERNANCES (La Bonne Alternance) :\\n${jobsLBA}\\n\\n`;\n}\n\nif (nbFT === 0 && nbLBA === 0) {\n  result += `Aucune offre trouvée pour ces critères. Suggère au jeune d'élargir sa zone géographique ou ses secteurs de recherche.`;\n} else {\n  result += `Présente les 3-5 meilleures offres au jeune de manière naturelle. Privilégie celles qui acceptent les débutants. Inclus les liens pour postuler.`;\n}\n\nreturn [{ json: { response: result } }];"
       },
-      "id": "rt-score-001",
-      "name": "🎯 Scorer + Formater message WA",
+      "id": "rt-format-001",
+      "name": "🎯 Formater résultats",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1050, 0]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.facebook.com/v22.0/{{ $json.phoneNumberId }}/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.wa_phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($json.messageWhatsApp) }}\n  }\n}",
-        "options": {}
-      },
-      "id": "rt-send-wa-001",
-      "name": "📱 Envoyer offres par WA",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1300, 0],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "hhYZ0INRxDuqd9Sm",
-          "name": "WA Koda"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=INSERT INTO koda_memory_stream (jeune_id, event_type, source, content, metadata, importance) VALUES ('{{ $('⚙️ Construire requêtes').first().json.jeune.airtable_id }}', 'match_sent', 'koda', '{{ $json.messageWhatsApp.substring(0, 500).replace(/'/g, \"''\") }}', '{\"nb_offres\": {{ $('🎯 Scorer + Formater message WA').first().json.debug.nb_total_scored }}, \"trigger\": \"realtime\"}'::jsonb, 7);",
-        "options": {}
-      },
-      "id": "rt-log-001",
-      "name": "💾 Logger matching",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [1550, 0],
-      "credentials": {
-        "postgres": {
-          "id": "2raQuLNZ5pOeUkJC",
-          "name": "Postgres LO_BIA"
-        }
-      },
-      "onError": "continueRegularOutput"
+      "position": [1300, 0]
     }
   ],
   "pinData": {},
   "connections": {
-    "⚡ Déclenché par Koda WA": {
+    "⚡ Déclenché par Agent Koda": {
+      "main": [
+        [
+          {
+            "node": "📋 Charger profil jeune",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Charger profil jeune": {
       "main": [
         [
           {
@@ -190,7 +178,7 @@
       "main": [
         [
           {
-            "node": "🎯 Scorer + Formater message WA",
+            "node": "🎯 Formater résultats",
             "type": "main",
             "index": 0
           }
@@ -201,29 +189,7 @@
       "main": [
         [
           {
-            "node": "🎯 Scorer + Formater message WA",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "🎯 Scorer + Formater message WA": {
-      "main": [
-        [
-          {
-            "node": "📱 Envoyer offres par WA",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "📱 Envoyer offres par WA": {
-      "main": [
-        [
-          {
-            "node": "💾 Logger matching",
+            "node": "🎯 Formater résultats",
             "type": "main",
             "index": 0
           }
@@ -235,7 +201,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "koda-rt-matching-v1",
+  "versionId": "koda-rt-matching-v2",
   "meta": {
     "instanceId": "koda-les-ombres"
   },
