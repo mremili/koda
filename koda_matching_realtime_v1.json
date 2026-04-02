@@ -3,8 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "inputSource": "jsonExample",
-        "jsonExample": "{\"airtable_id\":\"\",\"wa_phone\":\"\"}"
+        "inputSource": "passThrough"
       },
       "id": "rt-trigger-001",
       "name": "⚡ Déclenché par Agent Koda",
@@ -18,7 +17,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=WITH skills_jeune AS (\n  SELECT sk.skill_name as skill\n  FROM jeunes j\n  INNER JOIN koda_inference_skills sk\n    ON (sk.source_type = 'classe' AND sk.source_value = j.classe)\n    OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise)\n  WHERE j.airtable_id = '{{ $json.airtable_id }}'\n  UNION\n  SELECT sk.skill_name as skill\n  FROM jeunes j\n  INNER JOIN koda_inference_skills sk\n    ON sk.source_type = 'situation' AND sk.source_value = 'MNA'\n  WHERE j.mna = true AND j.airtable_id = '{{ $json.airtable_id }}'\n)\nSELECT\n  j.airtable_id, j.prenom, j.codes_rome_suggeres, j.departement, j.ville,\n  j.niveau_francais_declare, j.classe, j.disponibilite, j.secteurs_interet,\n  j.besoins, j.attentes_mentor, j.mna, j.secteur_vise,\n  COALESCE((SELECT STRING_AGG(DISTINCT s.skill, ', ') FROM skills_jeune s), '') AS skills_inferees\nFROM jeunes j\nWHERE j.airtable_id = '{{ $json.airtable_id }}'\nLIMIT 1;",
+        "query": "=WITH skills_jeune AS (\n  SELECT sk.skill_name as skill\n  FROM jeunes j\n  INNER JOIN koda_inference_skills sk\n    ON (sk.source_type = 'classe' AND sk.source_value = j.classe)\n    OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise)\n  WHERE j.airtable_id = '{{ ($json.query || $json.chatInput || $json.airtable_id || '').trim() }}'\n  UNION\n  SELECT sk.skill_name as skill\n  FROM jeunes j\n  INNER JOIN koda_inference_skills sk\n    ON sk.source_type = 'situation' AND sk.source_value = 'MNA'\n  WHERE j.mna = true AND j.airtable_id = '{{ ($json.query || $json.chatInput || $json.airtable_id || '').trim() }}'\n)\nSELECT\n  j.airtable_id, j.prenom, j.codes_rome_suggeres, j.departement, j.ville,\n  j.niveau_francais_declare, j.classe, j.disponibilite, j.secteurs_interet,\n  j.besoins, j.attentes_mentor, j.mna, j.secteur_vise,\n  COALESCE((SELECT STRING_AGG(DISTINCT s.skill, ', ') FROM skills_jeune s), '') AS skills_inferees\nFROM jeunes j\nWHERE j.airtable_id = '{{ ($json.query || $json.chatInput || $json.airtable_id || '').trim() }}'\nLIMIT 1;",
         "options": {}
       },
       "id": "rt-lookup-001",
