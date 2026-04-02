@@ -1,0 +1,111 @@
+{
+  "name": "📄 Koda - CV Builder (sous-workflow)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{ \"query\": \"TEST_MOURAD_001\" }"
+      },
+      "id": "cv-trigger",
+      "name": "⚡ Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parser l'input du toolWorkflow\nconst raw = $input.first().json;\nlet airtableId = '';\nif (raw.query && typeof raw.query === 'string') airtableId = raw.query.trim();\nelse if (raw.chatInput && typeof raw.chatInput === 'string') airtableId = raw.chatInput.trim();\nelse if (raw.airtable_id) airtableId = raw.airtable_id.trim();\nelse {\n  for (const [k, v] of Object.entries(raw)) {\n    if (typeof v === 'string' && (v.startsWith('rec') || v.startsWith('TEST_'))) {\n      airtableId = v.trim();\n      break;\n    }\n  }\n}\nconst idMatch = airtableId.match(/(rec[A-Za-z0-9]+|TEST_[A-Za-z0-9_]+)/);\nif (idMatch) airtableId = idMatch[1];\n\nreturn [{ json: { airtable_id: airtableId, has_id: airtableId.length > 0 } }];"
+      },
+      "id": "cv-parse",
+      "name": "🔧 Parser input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT\n  j.airtable_id, j.prenom, j.nom, j.telephone, j.email, j.ville,\n  j.departement, j.classe, j.secteur_vise, j.niveau_francais_declare,\n  j.mna, j.disponibilite, j.besoins, j.attentes_mentor, j.genre,\n  j.resume_suivi, j.structure, j.age_inscription,\n  COALESCE(\n    (SELECT STRING_AGG(DISTINCT sk.skill_name, ', ')\n     FROM koda_inference_skills sk\n     WHERE (sk.source_type = 'classe' AND sk.source_value = j.classe)\n        OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise)\n        OR (sk.source_type = 'situation' AND sk.source_value = 'MNA' AND j.mna = true)\n    ), ''\n  ) AS skills_inferees,\n  COALESCE(\n    (SELECT STRING_AGG(kc.message_text, ' | ' ORDER BY kc.sent_at DESC)\n     FROM koda_conversations kc\n     WHERE kc.jeune_id = j.airtable_id AND kc.direction = 'in'\n     LIMIT 20\n    ), ''\n  ) AS conversations_recentes\nFROM jeunes j\nWHERE j.airtable_id = '{{ $('🔧 Parser input').first().json.airtable_id }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "cv-profil",
+      "name": "📋 Charger profil complet",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [500, 0],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Construire le prompt Sonnet pour extraction + génération CV\n// ============================================================\n\nconst j = $('📋 Charger profil complet').first().json;\n\nif (!j || !j.airtable_id) {\n  return [{ json: { skip: true, error: 'Profil non trouvé' } }];\n}\n\nconst systemPrompt = `Tu es un expert en rédaction de CV pour jeunes en insertion professionnelle (16-25 ans).\n\nTu reçois TOUTES les données disponibles sur un jeune. Ton travail :\n1. EXTRAIRE les expériences cachées dans les notes du mentor (resume_suivi) et les conversations\n2. VALORISER chaque fait réel de manière professionnelle (sans jamais mentir)\n3. STRUCTURER les expériences par catégories de missions (comme un CV de cadre)\n4. GÉNÉRER un CV complet au format JSON\n\nRÈGLES ABSOLUES :\n- Ne JAMAIS mentionner ASE, MNA, foyer, placement, aide sociale, MLDS, dispositif jeunesse\n- Ne JAMAIS inventer d'expérience ou de compétence\n- \"Je fais le ménage au foyer\" → \"Entretien des espaces collectifs — Hébergement collectif\"\n- \"Pêche en mer au Sénégal\" → \"Pêcheur artisanal\" avec catégories de missions\n- \"Arrivé en France\" n'est PAS une expérience → ne pas mettre\n- \"Jamais été scolarisé\" → ne pas mentionner, mettre seulement la formation actuelle\n- UPE2A → \"Parcours de Français Langue Étrangère\"\n- MLDS → \"Formation de remise à niveau\"\n- Adresse : mettre SEULEMENT la ville (pas l'adresse complète)\n- Pas de date de naissance\n- Pas de photo\n- Langues : format texte \"(langue maternelle)\", \"(courant)\", \"(niveau intermédiaire)\" — PAS de pourcentages\n\nSTRUCTURE DU CV :\nChaque expérience doit avoir des CATÉGORIES DE MISSIONS (comme un CV senior) :\n- Pour la restauration : \"Service : ...\", \"Préparation : ...\", \"Hygiène : ...\"\n- Pour le BTP : \"Travaux : ...\", \"Sécurité : ...\", \"Matériaux : ...\"\n- Pour la logistique : \"Préparation : ...\", \"Manutention : ...\", \"Organisation : ...\"\n- Pour le commerce : \"Vente : ...\", \"Gestion : ...\", \"Relation client : ...\"\n- Adapte les catégories au métier\n\nCOMPÉTENCES en 4 catégories :\n- Savoir-faire : compétences techniques liées au métier visé\n- Compétences humaines : soft skills SPÉCIFIQUES (pas \"rigoureux, autonome\" qui sont génériques)\n- Compétences linguistiques : format \"Langue (niveau)\" en italique\n- Si pertinent : Compétences techniques (outils, logiciels, certifications)\n\nACCROCHE PROFIL : 3-4 lignes personnalisées, mentionnant le métier visé, une qualité distinctive, et la disponibilité. PAS de copié-collé générique.\n\nSi le jeune a très peu d'expérience, concentre-toi sur :\n1. Valoriser au maximum ce qui existe (même informel)\n2. Étoffer la section compétences\n3. Rédiger un profil accrocheur\n4. Le CV doit quand même faire PRO et remplir la page\n\nRéponds UNIQUEMENT en JSON valide :`;\n\nconst userPrompt = `DONNÉES DU JEUNE :\n\nIdentité :\n- Prénom : ${j.prenom || ''}\n- Nom : ${j.nom || ''}\n- Ville : ${j.ville || ''} (${j.departement || ''})\n- Téléphone : ${j.telephone || ''}\n- Email : ${j.email || 'non renseigné'}\n- Genre : ${j.genre || 'non précisé'}\n\nFormation actuelle :\n- Classe : ${j.classe || 'non précisée'}\n- Secteur visé : ${j.secteur_vise || 'non précisé'}\n\nProfil :\n- MNA : ${j.mna ? 'Oui (ne pas mentionner dans le CV)' : 'Non'}\n- Niveau français : ${j.niveau_francais_declare || 'non précisé'}\n- Disponibilité : ${j.disponibilite || 'non précisée'}\n- Besoins exprimés : ${j.besoins || ''}\n- Ce qu'il/elle dit : \"${(j.attentes_mentor || '').substring(0, 1000)}\"\n\nCompétences inférées par IA :\n${j.skills_inferees || 'Aucune'}\n\nNotes du mentor (resume_suivi) — MINE D'OR pour extraire des expériences :\n${(j.resume_suivi || 'Pas de notes disponibles').substring(0, 2000)}\n\nConversations WhatsApp récentes :\n${(j.conversations_recentes || 'Aucune').substring(0, 1000)}\n\n---\n\nGénère le CV en JSON avec cette structure exacte :\n{\n  \"prenom_nom\": \"...\",\n  \"telephone\": \"...\",\n  \"email\": \"...\",\n  \"ville\": \"...\",\n  \"titre\": \"...\",\n  \"profil\": \"... (3-4 lignes d'accroche personnalisée)\",\n  \"experiences\": [\n    {\n      \"poste\": \"...\",\n      \"lieu\": \"...\",\n      \"dates\": \"...\",\n      \"categories\": [\n        { \"nom\": \"...\", \"detail\": \"...\" }\n      ]\n    }\n  ],\n  \"formations\": [\n    {\n      \"diplome\": \"...\",\n      \"lieu\": \"...\",\n      \"dates\": \"...\",\n      \"detail\": \"... (optionnel : matières, mentions)\"\n    }\n  ],\n  \"competences\": [\n    { \"categorie\": \"Savoir-faire\", \"detail\": \"...\" },\n    { \"categorie\": \"Compétences humaines\", \"detail\": \"...\" },\n    { \"categorie\": \"Compétences linguistiques\", \"detail\": \"...\" }\n  ],\n  \"centres_interet\": \"... (1 ligne)\"\n}`;\n\nreturn [{ json: { systemPrompt, userPrompt, jeune: j, skip: false } }];"
+      },
+      "id": "cv-build-prompt",
+      "name": "📝 Construire prompt CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "=COLLER_VOTRE_CLE_ANTHROPIC_ICI" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2048, system: $json.systemPrompt, messages: [{ role: 'user', content: $json.userPrompt }] }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "cv-sonnet",
+      "name": "🧠 Claude Sonnet (CV)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Construire le HTML du CV à partir de la réponse Sonnet\n// ============================================================\n\nconst sonnetResp = $('🧠 Claude Sonnet (CV)').first().json;\nconst jeune = $('📝 Construire prompt CV').first().json.jeune;\n\n// Parser le JSON de Sonnet\nlet cv = {};\ntry {\n  const text = sonnetResp.content?.[0]?.text || '{}';\n  const cleaned = text.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  cv = JSON.parse(cleaned);\n} catch(e) {\n  return [{ json: { response: 'Erreur lors de la génération du CV. Réessaie dans quelques instants.', error: e.message } }];\n}\n\n// Construire le HTML\nlet html = `<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<style>\n  @page { size: A4; margin: 0; }\n  * { margin: 0; padding: 0; box-sizing: border-box; }\n  body { font-family: Georgia, 'Times New Roman', serif; font-size: 10.5pt; line-height: 1.4; color: #1a1a1a; background: white; width: 210mm; min-height: 297mm; padding: 18mm 20mm 15mm 20mm; }\n  .header { text-align: center; margin-bottom: 6mm; }\n  .header h1 { font-size: 22pt; font-weight: bold; letter-spacing: 1.5px; margin-bottom: 2mm; }\n  .header .contact { font-size: 9.5pt; color: #444; line-height: 1.6; }\n  .header .contact a { color: #1a5276; text-decoration: none; }\n  .header .titre { font-size: 11pt; font-style: italic; color: #1a5276; margin-top: 3mm; }\n  .section-title { text-align: center; font-size: 11pt; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-top: 5mm; margin-bottom: 3mm; border-top: 1px solid #1a1a1a; border-bottom: 1px solid #1a1a1a; padding: 1.5mm 0; }\n  .profil { font-size: 10pt; text-align: justify; line-height: 1.5; margin-bottom: 2mm; color: #333; }\n  .exp { margin-bottom: 4mm; }\n  .exp-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1mm; }\n  .exp-title { font-weight: bold; font-size: 10.5pt; text-transform: uppercase; }\n  .exp-dates { font-style: italic; font-size: 9pt; color: #555; }\n  .exp-lieu { font-style: italic; font-size: 9.5pt; color: #555; margin-bottom: 1.5mm; }\n  .cat { margin-bottom: 1mm; font-size: 10pt; line-height: 1.45; text-align: justify; }\n  .cat-name { font-weight: bold; }\n  .form { margin-bottom: 3mm; }\n  .form-header { display: flex; justify-content: space-between; align-items: baseline; }\n  .form-title { font-weight: bold; font-size: 10.5pt; text-transform: uppercase; }\n  .form-dates { font-style: italic; font-size: 9pt; color: #555; }\n  .form-lieu { font-style: italic; font-size: 9.5pt; color: #555; }\n  .form-detail { font-size: 9.5pt; color: #333; margin-top: 0.5mm; }\n  .comp-line { margin-bottom: 1.5mm; font-size: 10pt; line-height: 1.5; }\n  .comp-cat { font-weight: bold; }\n  .interets { font-size: 10pt; color: #333; }\n</style>\n</head>\n<body>\\n`;\n\n// Header\nhtml += `<div class=\"header\">\\n`;\nhtml += `  <h1>${cv.prenom_nom || jeune.prenom + ' ' + (jeune.nom || '')}</h1>\\n`;\nhtml += `  <div class=\"contact\">\\n`;\nif (cv.telephone) html += `    Téléphone : ${cv.telephone}<br>\\n`;\nif (cv.email && cv.email !== 'non renseigné') html += `    Email : <a href=\"mailto:${cv.email}\">${cv.email}</a>\\n`;\nhtml += `  </div>\\n`;\nif (cv.titre) html += `  <div class=\"titre\">${cv.titre}</div>\\n`;\nhtml += `</div>\\n\\n`;\n\n// Profil\nif (cv.profil) {\n  html += `<div class=\"section-title\">Profil</div>\\n`;\n  html += `<div class=\"profil\">${cv.profil}</div>\\n\\n`;\n}\n\n// Expériences\nif (cv.experiences && cv.experiences.length > 0) {\n  html += `<div class=\"section-title\">Expérience</div>\\n`;\n  for (const exp of cv.experiences) {\n    html += `<div class=\"exp\">\\n`;\n    html += `  <div class=\"exp-header\">\\n`;\n    html += `    <span class=\"exp-title\">${exp.poste || ''}</span>\\n`;\n    html += `    <span class=\"exp-dates\">${exp.dates || ''}</span>\\n`;\n    html += `  </div>\\n`;\n    if (exp.lieu) html += `  <div class=\"exp-lieu\">${exp.lieu}</div>\\n`;\n    if (exp.categories && exp.categories.length > 0) {\n      for (const cat of exp.categories) {\n        html += `  <div class=\"cat\"><span class=\"cat-name\">${cat.nom} : </span>${cat.detail}</div>\\n`;\n      }\n    }\n    html += `</div>\\n`;\n  }\n  html += `\\n`;\n}\n\n// Formations\nif (cv.formations && cv.formations.length > 0) {\n  html += `<div class=\"section-title\">Formation</div>\\n`;\n  for (const form of cv.formations) {\n    html += `<div class=\"form\">\\n`;\n    html += `  <div class=\"form-header\">\\n`;\n    html += `    <span class=\"form-title\">${form.diplome || ''}</span>\\n`;\n    html += `    <span class=\"form-dates\">${form.dates || ''}</span>\\n`;\n    html += `  </div>\\n`;\n    if (form.lieu) html += `  <div class=\"form-lieu\">${form.lieu}</div>\\n`;\n    if (form.detail) html += `  <div class=\"form-detail\">${form.detail}</div>\\n`;\n    html += `</div>\\n`;\n  }\n  html += `\\n`;\n}\n\n// Compétences\nif (cv.competences && cv.competences.length > 0) {\n  html += `<div class=\"section-title\">Compétences</div>\\n`;\n  for (const comp of cv.competences) {\n    html += `<div class=\"comp-line\"><span class=\"comp-cat\">${comp.categorie} : </span>${comp.detail}</div>\\n`;\n  }\n  html += `\\n`;\n}\n\n// Centres d'intérêt\nif (cv.centres_interet) {\n  html += `<div class=\"section-title\">Centres d'intérêt</div>\\n`;\n  html += `<div class=\"interets\">${cv.centres_interet}</div>\\n`;\n}\n\nhtml += `</body></html>`;\n\n// Résumé pour l'agent\nconst nbExp = (cv.experiences || []).length;\nconst nbForm = (cv.formations || []).length;\n\nlet summary = `CV généré pour ${cv.prenom_nom || jeune.prenom} :\\n`;\nsummary += `- Titre : ${cv.titre}\\n`;\nsummary += `- ${nbExp} expérience(s), ${nbForm} formation(s)\\n`;\nsummary += `- Profil : ${(cv.profil || '').substring(0, 100)}...\\n`;\nif (cv.experiences) {\n  cv.experiences.forEach(e => {\n    summary += `- Exp: ${e.poste} (${e.dates})\\n`;\n  });\n}\nsummary += `\\nLe CV HTML est prêt. Dis au jeune que son CV est en cours de finalisation.`;\n\nreturn [{ json: { response: summary, cv_html: html, cv_json: cv } }];"
+      },
+      "id": "cv-html",
+      "name": "🎨 Construire HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 0]
+    }
+  ],
+  "connections": {
+    "⚡ Trigger": {
+      "main": [[{ "node": "🔧 Parser input", "type": "main", "index": 0 }]]
+    },
+    "🔧 Parser input": {
+      "main": [[{ "node": "📋 Charger profil complet", "type": "main", "index": 0 }]]
+    },
+    "📋 Charger profil complet": {
+      "main": [[{ "node": "📝 Construire prompt CV", "type": "main", "index": 0 }]]
+    },
+    "📝 Construire prompt CV": {
+      "main": [[{ "node": "🧠 Claude Sonnet (CV)", "type": "main", "index": 0 }]]
+    },
+    "🧠 Claude Sonnet (CV)": {
+      "main": [[{ "node": "🎨 Construire HTML", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "koda-cv-v1",
+  "meta": { "instanceId": "koda-les-ombres" },
+  "tags": [{ "name": "Koda" }]
+}
