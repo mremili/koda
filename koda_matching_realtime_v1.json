@@ -26,7 +26,7 @@
       "typeVersion": 2.5,
       "position": [
         250,
-        -100
+        0
       ],
       "credentials": {
         "postgres": {
@@ -47,8 +47,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        250,
-        100
+        500,
+        0
       ],
       "credentials": {
         "postgres": {
@@ -109,7 +109,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        500,
+        750,
         0
       ]
     },
@@ -122,7 +122,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1250,
+        1750,
         0
       ]
     },
@@ -135,7 +135,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        750,
+        1000,
         0
       ]
     },
@@ -148,7 +148,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1500,
+        2000,
         0
       ]
     },
@@ -185,7 +185,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1750,
+        2250,
         0
       ],
       "onError": "continueRegularOutput"
@@ -199,7 +199,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
+        2500,
         0
       ]
     },
@@ -228,8 +228,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1000,
-        -100
+        1250,
+        0
       ],
       "onError": "continueRegularOutput"
     },
@@ -258,8 +258,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1000,
-        100
+        1500,
+        0
       ],
       "onError": "continueRegularOutput"
     }
@@ -273,7 +273,13 @@
             "node": "📋 Charger profil + skills",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "📋 Charger profil + skills": {
+      "main": [
+        [
           {
             "node": "📋 Charger passerelles",
             "type": "main",
@@ -282,7 +288,7 @@
         ]
       ]
     },
-    "📋 Charger profil + skills": {
+    "📋 Charger passerelles": {
       "main": [
         [
           {
@@ -311,11 +317,6 @@
             "node": "📡 France Travail",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "📡 La Bonne Alternance",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -324,7 +325,7 @@
       "main": [
         [
           {
-            "node": "🎯 Scorer les offres v3",
+            "node": "📡 La Bonne Alternance",
             "type": "main",
             "index": 0
           }
