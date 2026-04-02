@@ -178,7 +178,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================================\n// 📤 KODA — Assembler réponse + Logger dans Supabase\n// ============================================================================\n\nconst input = $input.item.json;\nconst waData = $('🧠 Construire contexte Koda').item.json;\n\nlet reponseIA = '';\ntry {\n  reponseIA = input.output || input.text || '';\n} catch (e) {\n  reponseIA = \"Merci pour ton message ! Je reviens vers toi très vite.\";\n}\n\n// Nettoyer\nreponseIA = reponseIA\n  .replace(/^(Bonjour|Salut|Hello|Hey|Coucou)\\s+\\w+[,!]?\\s*/i, '')\n  .replace(/\\n*(Cordialement|À bientôt|Koda|Assistant)[^\\n]*$/gi, '')\n  .replace(/\\*\\*/g, '')  // Supprimer le gras markdown\n  .replace(/\\*/g, '')    // Supprimer les italiques markdown  \n  .trim();\n\n// Construire les SQL de logging\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  return \"'\" + String(v).replace(/'/g, \"''\").substring(0, 5000) + \"'\";\n};\nconst now = new Date().toISOString();\nconst jeuneId = waData.jeuneId;\n\nlet sqlStatements = [];\n\nif (jeuneId) {\n  // Log message entrant\n  sqlStatements.push(`INSERT INTO koda_conversations (jeune_id, direction, sender, message_text, message_type, wa_message_id, metadata) VALUES (${esc(jeuneId)}, 'in', 'jeune', ${esc(waData.body)}, 'text', ${esc(waData.messageId)}, '{\"wa_phone\":\"${waData.from}\"}'::jsonb) ON CONFLICT (wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING;`);\n\n  // Log message sortant\n  sqlStatements.push(`INSERT INTO koda_conversations (jeune_id, direction, sender, message_text, message_type) VALUES (${esc(jeuneId)}, 'out', 'koda', ${esc(reponseIA)}, 'text');`);\n\n  // Memory stream\n  sqlStatements.push(`INSERT INTO koda_memory_stream (jeune_id, event_type, source, content, metadata, importance) VALUES (${esc(jeuneId)}, 'message_in', 'jeune', ${esc(waData.body)}, '{\"wa_phone\":\"${waData.from}\",\"onboarding_step\":\"${waData.onboardingStep}\"}'::jsonb, 3);`);\n\n  // Mettre à jour last_message_at et last_reply_at\n  sqlStatements.push(`UPDATE koda_agent_state SET last_message_at = '${now}', last_reply_at = '${now}', wa_phone = '${waData.from}', updated_at = '${now}' WHERE jeune_id = ${esc(jeuneId)};`);\n\n  // Détecter avancement onboarding et mettre à jour\n  const step = waData.onboardingStep;\n  const body = (waData.body || '').toLowerCase();\n  let newStep = step;\n\n  if (step === 'not_started' || step === 'welcome') {\n    newStep = 'job_type';\n  } else if (step === 'job_type' || step === 'job_type_confirm') {\n    newStep = 'location';\n  } else if (step === 'location' || step === 'location_confirm') {\n    newStep = 'contract_type';\n  } else if (step === 'contract_type') {\n    newStep = 'cv_check';\n  } else if (step === 'cv_check') {\n    newStep = 'ready';\n  }\n\n  if (newStep !== step) {\n    // Collecter la donnée\n    let dataKey = '';\n    if (step === 'job_type' || step === 'job_type_confirm') dataKey = 'secteur_stated';\n    else if (step === 'location' || step === 'location_confirm') dataKey = 'location_stated';\n    else if (step === 'contract_type') dataKey = 'contract_type';\n    else if (step === 'cv_check') dataKey = 'has_cv';\n\n    const dataUpdate = dataKey ? `data_collected = data_collected || '{\"${dataKey}\":${esc(waData.body)}}'::jsonb,` : '';\n\n    sqlStatements.push(`UPDATE koda_onboarding_state SET step = '${newStep}', ${dataUpdate} ${newStep === 'ready' ? \"completed_at = '\" + now + \"',\" : ''} started_at = COALESCE(started_at, '${now}'), updated_at = '${now}' WHERE jeune_id = ${esc(jeuneId)};`);\n  }\n}\n\nreturn {\n  json: {\n    to: waData.from,\n    messageWhatsApp: reponseIA,\n    phoneNumber: waData.phoneNumber,\n    profileName: waData.profileName,\n    phoneNumberId: waData.phoneNumberId,\n    jeuneId: jeuneId,\n    sqlStatements: sqlStatements.join('\\n')\n  }\n};"
+        "jsCode": "// ============================================================================\n// 📤 KODA — Assembler réponse + Logger dans Supabase\n// ============================================================================\n\nconst input = $input.item.json;\nconst waData = $('🧠 Construire contexte Koda').item.json;\n\nlet reponseIA = '';\ntry {\n  reponseIA = input.output || input.text || '';\n} catch (e) {\n  reponseIA = \"Merci pour ton message ! Je reviens vers toi très vite.\";\n}\n\n// Nettoyer\nreponseIA = reponseIA\n  .replace(/^(Bonjour|Salut|Hello|Hey|Coucou)\\s+\\w+[,!]?\\s*/i, '')\n  .replace(/\\n*(Cordialement|À bientôt|Koda|Assistant)[^\\n]*$/gi, '')\n  .replace(/\\*\\*/g, '')  // Supprimer le gras markdown\n  .replace(/\\*/g, '')    // Supprimer les italiques markdown  \n  .trim();\n\n// Construire les SQL de logging\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  return \"'\" + String(v).replace(/'/g, \"''\").substring(0, 5000) + \"'\";\n};\nconst now = new Date().toISOString();\nconst jeuneId = waData.jeuneId;\n\nlet sqlStatements = [];\n\nif (jeuneId) {\n  // Log message entrant\n  sqlStatements.push(`INSERT INTO koda_conversations (jeune_id, direction, sender, message_text, message_type, wa_message_id, metadata) VALUES (${esc(jeuneId)}, 'in', 'jeune', ${esc(waData.body)}, 'text', ${esc(waData.messageId)}, '{\"wa_phone\":\"${waData.from}\"}'::jsonb) ON CONFLICT (wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING;`);\n\n  // Log message sortant\n  sqlStatements.push(`INSERT INTO koda_conversations (jeune_id, direction, sender, message_text, message_type) VALUES (${esc(jeuneId)}, 'out', 'koda', ${esc(reponseIA)}, 'text');`);\n\n  // Memory stream\n  sqlStatements.push(`INSERT INTO koda_memory_stream (jeune_id, event_type, source, content, metadata, importance) VALUES (${esc(jeuneId)}, 'message_in', 'jeune', ${esc(waData.body)}, '{\"wa_phone\":\"${waData.from}\",\"onboarding_step\":\"${waData.onboardingStep}\"}'::jsonb, 3);`);\n\n  // Mettre à jour last_message_at et last_reply_at\n  sqlStatements.push(`UPDATE koda_agent_state SET last_message_at = '${now}', last_reply_at = '${now}', wa_phone = '${waData.from}', updated_at = '${now}' WHERE jeune_id = ${esc(jeuneId)};`);\n\n  // Détecter avancement onboarding et mettre à jour\n  const step = waData.onboardingStep;\n  const body = (waData.body || '').toLowerCase();\n  let newStep = step;\n\n  if (step === 'not_started' || step === 'welcome') {\n    newStep = 'job_type';\n  } else if (step === 'job_type' || step === 'job_type_confirm') {\n    newStep = 'location';\n  } else if (step === 'location' || step === 'location_confirm') {\n    newStep = 'contract_type';\n  } else if (step === 'contract_type') {\n    newStep = 'cv_check';\n  } else if (step === 'cv_check') {\n    newStep = 'ready';\n  }\n\n  if (newStep !== step) {\n    // Collecter la donnée\n    let dataKey = '';\n    if (step === 'job_type' || step === 'job_type_confirm') dataKey = 'secteur_stated';\n    else if (step === 'location' || step === 'location_confirm') dataKey = 'location_stated';\n    else if (step === 'contract_type') dataKey = 'contract_type';\n    else if (step === 'cv_check') dataKey = 'has_cv';\n\n    const dataUpdate = dataKey ? `data_collected = data_collected || '{\"${dataKey}\":${esc(waData.body)}}'::jsonb,` : '';\n\n    sqlStatements.push(`UPDATE koda_onboarding_state SET step = '${newStep}', ${dataUpdate} ${newStep === 'ready' ? \"completed_at = '\" + now + \"',\" : ''} started_at = COALESCE(started_at, '${now}'), updated_at = '${now}' WHERE jeune_id = ${esc(jeuneId)};`);\n  }\n}\n\n// Détecter si on doit déclencher le matching temps réel\nconst shouldTriggerMatching = (\n  (newStep === 'ready' && step !== 'ready') ||  // Onboarding vient de se terminer\n  (waData.onboardingStep === 'ready' && /offre|cherche|propose|emploi|boulot|job|travail/i.test(waData.body))  // Jeune demande des offres\n);\n\nreturn {\n  json: {\n    to: waData.from,\n    messageWhatsApp: reponseIA,\n    phoneNumber: waData.phoneNumber,\n    profileName: waData.profileName,\n    phoneNumberId: waData.phoneNumberId,\n    jeuneId: jeuneId,\n    sqlStatements: sqlStatements.join('\\n'),\n    triggerMatching: shouldTriggerMatching,\n    // Données pour le sous-workflow matching\n    matchingData: shouldTriggerMatching ? {\n      jeune: {\n        airtable_id: jeuneId,\n        prenom: waData.jeunePrenom,\n        codes_rome_suggeres: waData.context?.match(/Codes ROME : ([^\\n]*)/)?.[1] || 'M1805',\n        departement: waData.context?.match(/Département[^:]*: ([^\\n]*)/)?.[1] || '75',\n        ville: waData.context?.match(/Ville[^:]*: ([^\\n]*)/)?.[1] || '',\n        secteur_vise: waData.context?.match(/Secteur visé : ([^\\n]*)/)?.[1] || '',\n        niveau_francais_declare: waData.context?.match(/Français : ([^\\n]*)/)?.[1] || '',\n        mna: false,\n        classe: '',\n        disponibilite: '',\n        besoins: '',\n        attentes_mentor: ''\n      },\n      wa_phone: waData.from,\n      phoneNumberId: waData.phoneNumberId\n    } : null\n  }\n};"
       },
       "id": "fdcfc530-dcc3-49c8-8c7d-1bbdc9d9bd01",
       "name": "📤 Assembler réponse + Logger",
@@ -236,6 +236,50 @@
           "name": "WA Koda"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('📤 Assembler réponse + Logger').item.json.triggerMatching }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "koda-check-matching-001",
+      "name": "🔀 Matching nécessaire ?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer les données pour le sous-workflow matching\nconst data = $('📤 Assembler réponse + Logger').item.json;\nreturn { json: data.matchingData };"
+      },
+      "id": "koda-prep-matching-001",
+      "name": "📦 Préparer données matching",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2850,
+        0
+      ]
     }
   ],
   "pinData": {},
@@ -356,6 +400,28 @@
           {
             "node": "🤖 Agent Koda",
             "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📱 Envoyer via WhatsApp API": {
+      "main": [
+        [
+          {
+            "node": "🔀 Matching nécessaire ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Matching nécessaire ?": {
+      "main": [
+        [
+          {
+            "node": "📦 Préparer données matching",
+            "type": "main",
             "index": 0
           }
         ]
