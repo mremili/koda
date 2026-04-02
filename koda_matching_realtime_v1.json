@@ -18,7 +18,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT\n  j.airtable_id, j.prenom, j.codes_rome_suggeres, j.departement, j.ville,\n  j.niveau_francais_declare, j.classe, j.disponibilite, j.secteurs_interet,\n  j.besoins, j.attentes_mentor, j.mna, j.secteur_vise,\n  COALESCE(\n    (SELECT STRING_AGG(DISTINCT sk.skill_name, ', ')\n     FROM koda_inference_skills sk\n     WHERE (sk.source_type = 'classe' AND sk.source_value = j.classe)\n        OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise)\n        OR (sk.source_type = 'situation' AND sk.source_value = 'MNA' AND j.mna = true)\n    ), ''\n  ) AS skills_inferees\nFROM jeunes j\nWHERE j.airtable_id = '{{ $json.query || $json.chatInput || $json.airtable_id || \"\" }}'\nLIMIT 1;",
+        "query": "=SELECT\n  j.airtable_id, j.prenom, j.codes_rome_suggeres, j.departement, j.ville,\n  j.niveau_francais_declare, j.classe, j.disponibilite, j.secteurs_interet,\n  j.besoins, j.attentes_mentor, j.mna, j.secteur_vise,\n  COALESCE(\n    (SELECT STRING_AGG(DISTINCT sk.skill_name, ', ')\n     FROM koda_inference_skills sk\n     WHERE (sk.source_type = 'classe' AND sk.source_value = j.classe)\n        OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise)\n        OR (sk.source_type = 'situation' AND sk.source_value = 'MNA' AND j.mna = true)\n    ), ''\n  ) AS skills_inferees\nFROM jeunes j\nWHERE j.airtable_id = '{{ $('🔧 Parser input').first().json.airtable_id }}'\nLIMIT 1;",
         "options": {}
       },
       "id": "sw-profil",
@@ -26,7 +26,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        250,
+        350,
         0
       ],
       "credentials": {
@@ -48,7 +48,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        500,
+        600,
         0
       ],
       "credentials": {
@@ -110,7 +110,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        750,
+        850,
         0
       ]
     },
@@ -123,7 +123,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1000,
+        1100,
         0
       ]
     },
@@ -152,7 +152,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1250,
+        1350,
         0
       ],
       "onError": "continueRegularOutput"
@@ -182,7 +182,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1500,
+        1600,
         0
       ],
       "onError": "continueRegularOutput"
@@ -253,7 +253,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Formater les résultats pour retour à l'agent Koda\nconst aiResponse = $('🧠 Review IA (Haiku)').first().json;\nconst data = $('📝 Préparer prompt IA').first().json;\nconst jeune = data.jeune;\nconst offres = data.offres;\nconst recruteurs = data.recruteurs;\n\nlet selectionsOffres = [];\nlet selectionsRecruteurs = [];\ntry {\n  const aiText = aiResponse.content?.[0]?.text || '{\"offres\":[],\"recruteurs\":[]}';\n  const cleaned = aiText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  selectionsOffres = parsed.offres || [];\n  selectionsRecruteurs = parsed.recruteurs || [];\n} catch(e) {\n  selectionsOffres = offres.slice(0, 3).map((o, i) => ({ rang: i + 1, message: 'Bonne opportunité', raison: 'Score élevé' }));\n  selectionsRecruteurs = recruteurs.slice(0, 2).map((r, i) => ({ rang: i + 1, message: 'Entreprise qui recrute', raison: 'Score élevé' }));\n}\n\nlet result = `RÉSULTATS (${data.debug.nb_ft} offres FT, ${data.debug.nb_lba_jobs} alternances, ${data.debug.nb_lba_recruteurs} recruteurs analysés)\\n\\n`;\n\nif (selectionsOffres.length > 0) {\n  result += 'OFFRES SÉLECTIONNÉES :\\n';\n  selectionsOffres.forEach(sel => {\n    const o = offres[sel.rang - 1];\n    if (!o) return;\n    result += `${sel.rang}. ${o.titre} | ${o.entreprise} | ${o.lieu} | ${o.type_contrat} | Score: ${o.score}\\n`;\n    result += `   Lien: ${o.url_offre}\\n`;\n    result += `   \"${sel.message}\"\\n\\n`;\n  });\n}\n\nif (selectionsRecruteurs.length > 0) {\n  result += 'RECRUTEURS (candidature spontanée) :\\n';\n  selectionsRecruteurs.forEach(sel => {\n    const r = recruteurs[sel.rang - 1];\n    if (!r) return;\n    result += `${sel.rang}. ${r.entreprise} | ${r.lieu}`;\n    if (r.telephone) result += ` | Tel: ${r.telephone}`;\n    result += `\\n   Lien: ${r.url_offre}\\n`;\n    result += `   \"${sel.message}\"\\n\\n`;\n  });\n}\n\nif (selectionsOffres.length === 0 && selectionsRecruteurs.length === 0) {\n  result += 'Aucune offre pertinente trouvée. Suggère au jeune d\\'élargir ses critères.';\n} else {\n  result += 'Présente ces résultats au jeune de manière naturelle. Inclus les liens.';\n}\n\nreturn [{ json: { response: result } }];"
+        "jsCode": "// Vérifier si le profil a été chargé\nconst debugInput = $('🔧 Parser input').first().json;\nif (!debugInput.has_id) {\n  return [{ json: { response: 'Erreur: impossible d\\'identifier le jeune. Input reçu: ' + debugInput.debug_raw_input } }];\n}\n\n// Formater les résultats pour retour à l'agent Koda\nconst aiResponse = $('🧠 Review IA (Haiku)').first().json;\nconst data = $('📝 Préparer prompt IA').first().json;\nconst jeune = data.jeune;\nconst offres = data.offres;\nconst recruteurs = data.recruteurs;\n\nlet selectionsOffres = [];\nlet selectionsRecruteurs = [];\ntry {\n  const aiText = aiResponse.content?.[0]?.text || '{\"offres\":[],\"recruteurs\":[]}';\n  const cleaned = aiText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  selectionsOffres = parsed.offres || [];\n  selectionsRecruteurs = parsed.recruteurs || [];\n} catch(e) {\n  selectionsOffres = offres.slice(0, 3).map((o, i) => ({ rang: i + 1, message: 'Bonne opportunité', raison: 'Score élevé' }));\n  selectionsRecruteurs = recruteurs.slice(0, 2).map((r, i) => ({ rang: i + 1, message: 'Entreprise qui recrute', raison: 'Score élevé' }));\n}\n\nlet result = `RÉSULTATS (${data.debug.nb_ft} offres FT, ${data.debug.nb_lba_jobs} alternances, ${data.debug.nb_lba_recruteurs} recruteurs analysés)\\n\\n`;\n\nif (selectionsOffres.length > 0) {\n  result += 'OFFRES SÉLECTIONNÉES :\\n';\n  selectionsOffres.forEach(sel => {\n    const o = offres[sel.rang - 1];\n    if (!o) return;\n    result += `${sel.rang}. ${o.titre} | ${o.entreprise} | ${o.lieu} | ${o.type_contrat} | Score: ${o.score}\\n`;\n    result += `   Lien: ${o.url_offre}\\n`;\n    result += `   \"${sel.message}\"\\n\\n`;\n  });\n}\n\nif (selectionsRecruteurs.length > 0) {\n  result += 'RECRUTEURS (candidature spontanée) :\\n';\n  selectionsRecruteurs.forEach(sel => {\n    const r = recruteurs[sel.rang - 1];\n    if (!r) return;\n    result += `${sel.rang}. ${r.entreprise} | ${r.lieu}`;\n    if (r.telephone) result += ` | Tel: ${r.telephone}`;\n    result += `\\n   Lien: ${r.url_offre}\\n`;\n    result += `   \"${sel.message}\"\\n\\n`;\n  });\n}\n\nif (selectionsOffres.length === 0 && selectionsRecruteurs.length === 0) {\n  result += 'Aucune offre pertinente trouvée. Suggère au jeune d\\'élargir ses critères.';\n} else {\n  result += 'Présente ces résultats au jeune de manière naturelle. Inclus les liens.';\n}\n\nreturn [{ json: { response: result } }];"
       },
       "id": "sw-format",
       "name": "📤 Formater pour Agent",
@@ -263,6 +263,19 @@
         2500,
         0
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 🔧 Parser l'input du toolWorkflow\n// Le format varie selon la version n8n / type d'appel :\n//   - $json.query (toolWorkflow standard)\n//   - $json.chatInput (certaines versions)\n//   - $json.airtable_id (si passé via fields)\n//   - $json (peut être un string directement)\n//   - $json.input (autre format possible)\n// On essaie TOUT et on log pour debug\n// ============================================================\n\nconst raw = $input.first().json;\n\n// Log complet pour debug\nconst rawStr = JSON.stringify(raw).substring(0, 500);\n\n// Essayer d'extraire l'airtable_id de toutes les sources possibles\nlet airtableId = '';\n\n// Source 1: champs standards toolWorkflow\nif (raw.query && typeof raw.query === 'string') airtableId = raw.query.trim();\nelse if (raw.chatInput && typeof raw.chatInput === 'string') airtableId = raw.chatInput.trim();\nelse if (raw.airtable_id && typeof raw.airtable_id === 'string') airtableId = raw.airtable_id.trim();\nelse if (raw.input && typeof raw.input === 'string') airtableId = raw.input.trim();\n// Source 2: peut-être un objet avec des sous-champs\nelse if (raw.query?.query) airtableId = raw.query.query.trim();\nelse if (raw.action_input) airtableId = raw.action_input.trim();\n// Source 3: parcourir toutes les clés à la recherche d'un truc qui ressemble à un airtable_id\nelse {\n  for (const [k, v] of Object.entries(raw)) {\n    if (typeof v === 'string' && (v.startsWith('rec') || v.startsWith('TEST_'))) {\n      airtableId = v.trim();\n      break;\n    }\n  }\n}\n\n// Nettoyer : l'agent peut envoyer du texte autour de l'ID\n// ex: \"Searching for TEST_MOURAD_001\" → extraire TEST_MOURAD_001 ou recXXXXXXX\nconst idMatch = airtableId.match(/(rec[A-Za-z0-9]+|TEST_[A-Za-z0-9_]+)/);\nif (idMatch) airtableId = idMatch[1];\n\nreturn [{\n  json: {\n    airtable_id: airtableId,\n    debug_raw_input: rawStr,\n    debug_extracted_id: airtableId,\n    has_id: airtableId.length > 0\n  }\n}];"
+      },
+      "id": "sw-parse",
+      "name": "🔧 Parser input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ]
     }
   ],
   "connections": {
@@ -270,7 +283,7 @@
       "main": [
         [
           {
-            "node": "📋 Charger profil",
+            "node": "🔧 Parser input",
             "type": "main",
             "index": 0
           }
@@ -370,6 +383,17 @@
         [
           {
             "node": "📤 Formater pour Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔧 Parser input": {
+      "main": [
+        [
+          {
+            "node": "📋 Charger profil",
             "type": "main",
             "index": 0
           }
