@@ -90,7 +90,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Chercher le jeune par numéro de téléphone WA\n-- On cherche dans koda_agent_state.wa_phone ET jeunes.tel_referent\nWITH lookup AS (\n  SELECT\n    j.airtable_id,\n    j.prenom,\n    j.secteur_vise,\n    j.ville,\n    j.departement,\n    j.classe,\n    j.niveau_francais_declare,\n    j.mna,\n    j.disponibilite,\n    j.besoins,\n    j.attentes_mentor,\n    j.codes_rome_suggeres,\n    j.genre,\n    COALESCE(kas.current_stage, 'new') AS current_stage,\n    COALESCE(kos.step, 'not_started') AS onboarding_step,\n    COALESCE(kos.data_collected, '{}'::jsonb) AS data_collected,\n    kas.pending_matches,\n    kas.nb_matches_sent,\n    kas.nb_candidatures\n  FROM jeunes j\n  LEFT JOIN koda_agent_state kas ON kas.jeune_id = j.airtable_id\n  LEFT JOIN koda_onboarding_state kos ON kos.jeune_id = j.airtable_id\n  WHERE j.telephone = '{{ $json.phoneNumber }}'\n     OR j.telephone = '{{ $json.from }}'\n     OR kas.wa_phone = '{{ $json.from }}'\n     OR kas.wa_phone = '{{ $json.phoneNumber }}'\n  LIMIT 1\n)\nSELECT * FROM lookup;\n",
+        "query": "=-- Chercher le jeune par numéro WA (format 33XXXXXXXXX)\nWITH lookup AS (\n  SELECT\n    j.airtable_id,\n    j.prenom,\n    j.secteur_vise,\n    j.ville,\n    j.departement,\n    j.classe,\n    j.niveau_francais_declare,\n    j.mna,\n    j.disponibilite,\n    j.besoins,\n    j.attentes_mentor,\n    j.codes_rome_suggeres,\n    j.genre,\n    j.telephone,\n    COALESCE(kas.current_stage, 'new') AS current_stage,\n    COALESCE(kos.step, 'not_started') AS onboarding_step,\n    COALESCE(kos.data_collected, '{}'::jsonb) AS data_collected,\n    kas.pending_matches,\n    kas.nb_matches_sent,\n    kas.nb_candidatures\n  FROM jeunes j\n  LEFT JOIN koda_agent_state kas ON kas.jeune_id = j.airtable_id\n  LEFT JOIN koda_onboarding_state kos ON kos.jeune_id = j.airtable_id\n  WHERE j.telephone_normalized = '{{ $json.from }}'\n     OR kas.wa_phone = '{{ $json.from }}'\n  LIMIT 1\n)\nSELECT * FROM lookup;\n",
         "options": {}
       },
       "id": "f0969999-5e7c-4c44-b339-13555fba6b9d",
@@ -192,7 +192,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "{{ $json.sqlStatements }}",
+        "query": "={{ $json.sqlStatements }}",
         "options": {}
       },
       "id": "49bd5fd7-b4f8-418c-8377-d7e8388a9a09",
