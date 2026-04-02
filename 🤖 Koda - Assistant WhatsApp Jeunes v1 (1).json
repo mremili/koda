@@ -240,11 +240,23 @@
     {
       "parameters": {
         "name": "search_job_offers",
-        "description": "Cherche des offres d'emploi et d'alternance correspondant au profil du jeune. Appelle les APIs France Travail et La Bonne Alternance en temps réel. Utilise cet outil quand le jeune demande des offres, quand l'onboarding est terminé, ou quand tu veux proposer des opportunités. Retourne une liste d'offres avec titre, entreprise, lieu, type de contrat et lien.",
+        "description": "Cherche des offres d'emploi et d'alternance pour le jeune. Appelle les APIs France Travail et La Bonne Alternance en temps réel avec le scoring intelligent. Utilise cet outil quand le jeune demande des offres ou quand l'onboarding est terminé. Tu n'as PAS besoin de passer de paramètre, l'outil récupère automatiquement le profil du jeune.",
         "workflowId": {
           "__rl": true,
           "value": "",
           "mode": "list"
+        },
+        "fields": {
+          "values": [
+            {
+              "name": "airtable_id",
+              "stringValue": "={{ $('🧠 Construire contexte Koda').item.json.jeuneId }}"
+            },
+            {
+              "name": "wa_phone",
+              "stringValue": "={{ $('🧠 Construire contexte Koda').item.json.from }}"
+            }
+          ]
         }
       },
       "id": "koda-tool-wf-search-001",
