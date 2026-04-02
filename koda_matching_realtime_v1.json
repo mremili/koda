@@ -206,13 +206,13 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.ft_url }}",
+        "url": "={{ $('⚙️ Construire requêtes v3').first().json.ft_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $json.token }}"
+              "value": "=Bearer {{ $('⚙️ Construire requêtes v3').first().json.token }}"
             },
             {
               "name": "Accept",
@@ -222,7 +222,8 @@
         },
         "options": {
           "timeout": 10000
-        }
+        },
+        "method": "GET"
       },
       "id": "rt-ft-001",
       "name": "📡 France Travail",
@@ -252,7 +253,8 @@
         },
         "options": {
           "timeout": 10000
-        }
+        },
+        "method": "GET"
       },
       "id": "rt-lba-001",
       "name": "📡 La Bonne Alternance",
