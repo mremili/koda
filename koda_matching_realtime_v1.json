@@ -231,7 +231,7 @@
       "typeVersion": 4.2,
       "position": [
         1250,
-        0
+        -150
       ],
       "onError": "continueRegularOutput"
     },
@@ -261,10 +261,23 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1500,
-        0
+        1250,
+        150
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "rt-merge-001",
+      "name": "🔀 Merge FT + LBA",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1500,
+        0
+      ]
     }
   ],
   "pinData": {},
@@ -320,13 +333,7 @@
             "node": "📡 France Travail",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "📡 France Travail": {
-      "main": [
-        [
+          },
           {
             "node": "📡 La Bonne Alternance",
             "type": "main",
@@ -335,7 +342,29 @@
         ]
       ]
     },
+    "📡 France Travail": {
+      "main": [
+        [
+          {
+            "node": "🔀 Merge FT + LBA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "📡 La Bonne Alternance": {
+      "main": [
+        [
+          {
+            "node": "🔀 Merge FT + LBA",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "🔀 Merge FT + LBA": {
       "main": [
         [
           {
