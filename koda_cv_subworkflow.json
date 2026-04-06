@@ -1,5 +1,5 @@
 {
-  "name": "📄 Koda - CV Builder (sous-workflow)",
+  "name": "📄 Koda - CV Builder v2 (sous-workflow)",
   "nodes": [
     {
       "parameters": {
@@ -17,21 +17,21 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parser l'input du toolWorkflow\n// L'agent peut envoyer juste l'ID ou l'ID + contexte conversationnel\nconst raw = $input.first().json;\nlet fullInput = '';\nif (raw.query && typeof raw.query === 'string') fullInput = raw.query.trim();\nelse if (raw.chatInput && typeof raw.chatInput === 'string') fullInput = raw.chatInput.trim();\nelse if (raw.airtable_id) fullInput = raw.airtable_id.trim();\nelse {\n  for (const [k, v] of Object.entries(raw)) {\n    if (typeof v === 'string' && v.length > 3) {\n      fullInput = v.trim();\n      break;\n    }\n  }\n}\n\n// Extraire l'airtable_id du texte (peut contenir du contexte en plus)\nconst idMatch = fullInput.match(/(rec[A-Za-z0-9]+|TEST_[A-Za-z0-9_]+)/);\nconst airtableId = idMatch ? idMatch[1] : '';\n\n// Tout ce qui n'est pas l'ID = contexte conversationnel passé par l'agent\nconst extraContext = fullInput.replace(airtableId, '').trim();\n\nreturn [{ json: {\n  airtable_id: airtableId,\n  extra_context: extraContext,\n  has_id: airtableId.length > 0,\n  raw_input: fullInput.substring(0, 500)\n} }];"
+        "jsCode": "const raw = $input.first().json;\nlet fullInput = '';\nif (raw.query && typeof raw.query === 'string') fullInput = raw.query.trim();\nelse if (raw.chatInput && typeof raw.chatInput === 'string') fullInput = raw.chatInput.trim();\nelse if (raw.airtable_id) fullInput = raw.airtable_id.trim();\nelse {\n  for (const [k, v] of Object.entries(raw)) {\n    if (typeof v === 'string' && v.length > 3) { fullInput = v.trim(); break; }\n  }\n}\nconst idMatch = fullInput.match(/(rec[A-Za-z0-9]+|TEST_[A-Za-z0-9_]+)/);\nconst airtableId = idMatch ? idMatch[1] : '';\nconst extraContext = fullInput.replace(airtableId, '').replace(/^\\s*\\|\\s*/, '').trim();\nreturn [{ json: { airtable_id: airtableId, extra_context: extraContext, has_id: airtableId.length > 0 } }];"
       },
       "id": "cv-parse",
       "name": "🔧 Parser input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        250,
+        200,
         0
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT\n  j.airtable_id, j.prenom, j.nom, j.telephone, j.email, j.ville,\n  j.departement, j.classe, j.secteur_vise, j.niveau_francais_declare,\n  j.mna, j.disponibilite, j.besoins, j.attentes_mentor, j.genre,\n  j.resume_suivi, j.structure, j.age_inscription,\n  COALESCE(\n    (SELECT STRING_AGG(DISTINCT sk.skill_name, ', ')\n     FROM koda_inference_skills sk\n     WHERE (sk.source_type = 'classe' AND sk.source_value = j.classe)\n        OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise)\n        OR (sk.source_type = 'situation' AND sk.source_value = 'MNA' AND j.mna = true)\n    ), ''\n  ) AS skills_inferees,\n  COALESCE(\n    (SELECT STRING_AGG(kc.message_text, ' | ' ORDER BY kc.sent_at DESC)\n     FROM koda_conversations kc\n     WHERE kc.jeune_id = j.airtable_id AND kc.direction = 'in'\n     LIMIT 20\n    ), ''\n  ) AS conversations_recentes\nFROM jeunes j\nWHERE j.airtable_id = '{{ $('🔧 Parser input').first().json.airtable_id }}'\nLIMIT 1;",
+        "query": "=SELECT j.airtable_id, j.prenom, j.nom, j.telephone, j.email, j.ville, j.departement, j.classe, j.secteur_vise, j.niveau_francais_declare, j.mna, j.disponibilite, j.besoins, j.attentes_mentor, j.genre, j.resume_suivi, j.structure, j.age_inscription, COALESCE((SELECT STRING_AGG(DISTINCT sk.skill_name, ', ') FROM koda_inference_skills sk WHERE (sk.source_type = 'classe' AND sk.source_value = j.classe) OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise) OR (sk.source_type = 'situation' AND sk.source_value = 'MNA' AND j.mna = true)), '') AS skills_inferees, COALESCE((SELECT STRING_AGG(sub.message_text, ' | ') FROM (SELECT message_text FROM koda_conversations WHERE jeune_id = j.airtable_id AND direction = 'in' ORDER BY sent_at DESC LIMIT 20) sub), '') AS conversations_recentes FROM jeunes j WHERE j.airtable_id = '{{ $(\"🔧 Parser input\").first().json.airtable_id }}' LIMIT 1;",
         "options": {}
       },
       "id": "cv-profil",
@@ -39,7 +39,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        500,
+        400,
         0
       ],
       "credentials": {
@@ -52,14 +52,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================\n// Construire le prompt : ANALYSE d'abord, GÉNÉRATION si prêt\n// ============================================================\n\nconst j = $('📋 Charger profil complet').first().json;\n\nif (!j || !j.airtable_id) {\n  return [{ json: { skip: true, error: 'Profil non trouvé' } }];\n}\n\nconst systemPrompt = `Tu es un expert en création de CV pour jeunes en insertion professionnelle (16-25 ans).\n\nTu reçois TOUTES les données disponibles sur un jeune : profil, notes du mentor, compétences IA, et les conversations WhatsApp récentes (qui peuvent contenir des réponses à des questions que tu as posées précédemment sur son parcours).\n\nTON TRAVAIL EN 2 PHASES :\n\nPHASE 1 — ANALYSE (si pas assez de matière pour un CV pro) :\n1. Extraire les expériences DÉJÀ mentionnées (profil, resume_suivi, conversations)\n2. Identifier ce qui MANQUE pour un CV de qualité\n3. Générer LA PROCHAINE QUESTION à poser (UNE SEULE)\n\nPHASE 2 — GÉNÉRATION (si assez de matière) :\n1. Générer le CV complet en JSON\n\nCRITÈRES POUR PASSER EN PHASE 2 (il faut AU MOINS) :\n- Le secteur/métier visé est clair\n- Au moins 1 expérience (même informelle) avec suffisamment de détail pour rédiger 2-3 lignes de missions\n- Les langues parlées sont connues\n- On sait si le jeune a un email\nTu peux générer même sans centres d'intérêt ou sans formation détaillée.\n\nRÈGLES POUR LES QUESTIONS :\n- UNE question à la fois, jamais deux\n- Questions de DÉBLOCAGE (le jeune pense n'avoir rien fait) :\n  Mauvais : \"As-tu des expériences professionnelles ?\"\n  Bon : \"Tu m'as dit que tu voulais bosser en restauration. T'as déjà aidé en cuisine quelque part, même chez toi ou pour un repas collectif ?\"\n- Toujours en tutoiement, format WhatsApp court\n- Si le jeune a déjà répondu \"non\" à un sujet, ne pas reposer la même question\n- Ordre de priorité : expériences > langues > formation passée > email > centres d'intérêt\n\nRÈGLES POUR LA GÉNÉRATION DU CV :\n- Ne JAMAIS mentionner ASE, MNA, foyer, placement, MLDS\n- Ne JAMAIS inventer d'expérience\n- Valoriser professionnellement chaque fait réel\n- Expériences avec CATÉGORIES DE MISSIONS (pas juste des bullet points)\n  Ex: \"Service : accueil clientèle, prise de commandes, encaissement\"\n  Ex: \"Activité maritime : manipulation des équipements, tri des prises\"\n- Compétences en catégories : Savoir-faire / Compétences humaines / Compétences linguistiques\n- Accroche personnalisée (PAS de copié-collé \"Jeune et motivé...\")\n- UPE2A → \"Parcours de Français Langue Étrangère\"\n- Adresse : SEULEMENT la ville\n- Pas de date de naissance, pas de photo\n\nRéponds UNIQUEMENT en JSON :\n\nSi PHASE 1 (pas assez de matière) :\n{\n  \"phase\": \"collect\",\n  \"data_found\": {\n    \"experiences\": [\"description courte de chaque expérience trouvée\"],\n    \"formations\": [\"...\"],\n    \"langues\": [\"...\"],\n    \"competences\": [\"...\"],\n    \"email\": \"oui/non/inconnu\"\n  },\n  \"missing\": [\"ce qui manque encore\"],\n  \"next_question\": \"la question à poser au jeune (format WhatsApp, tutoiement)\",\n  \"question_context\": \"pourquoi cette question (pour l'agent)\"\n}\n\nSi PHASE 2 (assez de matière) :\n{\n  \"phase\": \"generate\",\n  \"prenom_nom\": \"...\",\n  \"telephone\": \"...\",\n  \"email\": \"...\",\n  \"ville\": \"...\",\n  \"titre\": \"...\",\n  \"profil\": \"... (3-4 lignes d'accroche personnalisée)\",\n  \"experiences\": [\n    {\n      \"poste\": \"...\",\n      \"lieu\": \"...\",\n      \"dates\": \"...\",\n      \"categories\": [\n        { \"nom\": \"...\", \"detail\": \"...\" }\n      ]\n    }\n  ],\n  \"formations\": [\n    { \"diplome\": \"...\", \"lieu\": \"...\", \"dates\": \"...\", \"detail\": \"...\" }\n  ],\n  \"competences\": [\n    { \"categorie\": \"Savoir-faire\", \"detail\": \"...\" },\n    { \"categorie\": \"Compétences humaines\", \"detail\": \"...\" },\n    { \"categorie\": \"Compétences linguistiques\", \"detail\": \"...\" }\n  ],\n  \"centres_interet\": \"...\"\n}`;\n\nconst userPrompt = `DONNÉES DU JEUNE :\n\nIdentité :\n- Prénom : ${j.prenom || ''}\n- Nom : ${j.nom || ''}\n- Ville : ${j.ville || ''} (${j.departement || ''})\n- Téléphone : ${j.telephone || ''}\n- Email : ${j.email || 'non renseigné'}\n- Genre : ${j.genre || 'non précisé'}\n\nFormation actuelle :\n- Classe : ${j.classe || 'non précisée'}\n- Secteur visé : ${j.secteur_vise || 'non précisé'}\n\nProfil :\n- MNA : ${j.mna ? 'Oui (ne pas mentionner dans le CV)' : 'Non'}\n- Niveau français : ${j.niveau_francais_declare || 'non précisé'}\n- Disponibilité : ${j.disponibilite || 'non précisée'}\n- Besoins exprimés : ${j.besoins || ''}\n- Ce qu'il/elle dit de lui/elle : \"${(j.attentes_mentor || '').substring(0, 1000)}\"\n\nCompétences inférées par IA :\n${j.skills_inferees || 'Aucune'}\n\nNotes du mentor (resume_suivi) — cherche des expériences cachées ici :\n${(j.resume_suivi || 'Pas de notes disponibles').substring(0, 2000)}\n\nConversations WhatsApp récentes (peuvent contenir des réponses aux questions CV) :\n${(j.conversations_recentes || 'Aucune conversation').substring(0, 2000)}\n\nAnalyse et décide : PHASE 1 (poser une question) ou PHASE 2 (générer le CV).`;\n\nreturn [{ json: { systemPrompt, userPrompt, jeune: j, skip: false } }];"
+        "jsCode": "const j = $('📋 Charger profil complet').first().json;\nconst extra = $('🔧 Parser input').first().json.extra_context || '';\n\nif (!j || !j.airtable_id) {\n  return [{ json: { skip: true, error: 'Profil non trouvé' } }];\n}\n\nconst systemPrompt = `Tu es un expert en création de CV pour jeunes en insertion professionnelle (16-25 ans).\n\nTu travailles en 2 PHASES :\n\n═══ PHASE 1 : COLLECTE (si pas assez de matière) ═══\n\nAnalyse TOUT ce que tu reçois (profil, notes mentor, conversations, contexte additionnel).\nIdentifie ce qui est CONNU vs ce qui MANQUE.\n\nINSIGHT CLÉ : les MISSIONS de chaque expérience sont INFÉRABLES.\n\"Stage boulangerie 2 semaines\" → tu SAIS que ça implique pétrissage, façonnage, hygiène, mise en rayon.\nTu n'as PAS besoin de demander les missions au jeune. Tu as juste besoin du TITRE + LIEU + DURÉE.\n\nCritères minimum pour passer en Phase 2 :\n- Au moins 1 expérience identifiée (même informelle, même \"ménage au foyer\")\n- Langues connues\n- Email connu ou confirmé absent\nSi ces critères sont remplis → Phase 2. Sinon → pose UNE question.\n\nQuestions de déblocage (pas \"as-tu une expérience\" mais) :\n- \"T'as déjà fait un stage, même en 3ème ? Ou aidé quelqu'un, même gratuitement ?\"\n- \"Au [pays d'origine], tu faisais quoi comme activité ?\"\n- \"Au quotidien, tu fais des trucs utiles ? Cuisine, ménage, traduction, sport ?\"\n\nRéponds en JSON :\n{\"phase\":\"collect\",\"data_found\":{\"experiences\":[],\"langues\":[],\"formations\":[],\"email\":\"\"},\"missing\":[\"...\"],\"next_question\":\"...\",\"question_context\":\"...\"}\n\n═══ PHASE 2 : GÉNÉRATION + ÉVALUATION ═══\n\nGénère un CV PROFESSIONNEL avec ces règles :\n\nEXPÉRIENCES — structure par CATÉGORIES DE MISSIONS :\n- Restauration : \"Service : accueil, prise de commandes ; Préparation : mise en place, aide cuisine ; Hygiène : nettoyage, normes HACCP\"\n- BTP : \"Travaux : pose, enduit, carrelage ; Sécurité : port EPI, balisage ; Manutention : transport matériaux\"\n- Commerce : \"Vente : conseil client, encaissement ; Gestion : réassort, inventaire ; Relation client : accueil, fidélisation\"\n- Logistique : \"Préparation : picking, colisage ; Manutention : chariot, transpalette ; Organisation : gestion stock, traçabilité\"\n- Informatique : \"Développement : conception, codage, tests ; Outils : [langages] ; Méthode : travail en équipe, gestion de version\"\n- ADAPTE les catégories au métier réel. INFÈRE les missions du titre du poste.\n\nCOMPÉTENCES en 3-4 catégories :\n- Savoir-faire : compétences techniques SPÉCIFIQUES au secteur (pas \"bureautique\")\n- Compétences humaines : avec PREUVES indirectes (pas juste \"rigoureux\")\n- Compétences linguistiques : \"Langue (niveau)\" — pas de pourcentages\n- (optionnel) Compétences techniques : outils, logiciels, certifications\n\nRÈGLES :\n- JAMAIS mentionner ASE, MNA, foyer, placement, MLDS, dispositif\n- JAMAIS inventer une expérience\n- \"Arrivé en France\" N'EST PAS une expérience\n- UPE2A → \"Parcours de Français Langue Étrangère\"\n- Adresse = ville seule\n- Pas de date naissance, pas de photo\n- Accroche PERSONNALISÉE (pas \"Jeune et motivé, je souhaite...\")\n- \"Ménage au foyer\" → \"Entretien des espaces collectifs — Hébergement collectif\"\n- \"Pêche en mer\" → \"Pêcheur artisanal\" avec catégories missions\n\nKODA SCORE — évalue ton propre CV sur 100 :\n- FORMAT (25) : titre ciblé, accroche perso, 1 page, email pro\n- CONTENU (25) : ≥1 exp avec missions, formations datées, compétences techniques\n- MOTS-CLÉS (25) : correspondance secteur, verbes d'action, compétences métier\n- IMPACT (25) : missions orientées résultat, soft skills avec preuves, cohérence\n\nSi ton score < 70, AMÉLIORE le CV toi-même avant de le retourner.\nBoucle jusqu'à score ≥ 70.\n\nRéponds en JSON :\n{\"phase\":\"generate\",\"prenom_nom\":\"...\",\"telephone\":\"...\",\"email\":\"...\",\"ville\":\"...\",\"titre\":\"...\",\"profil\":\"...\",\"experiences\":[{\"poste\":\"...\",\"lieu\":\"...\",\"dates\":\"...\",\"categories\":[{\"nom\":\"...\",\"detail\":\"...\"}]}],\"formations\":[{\"diplome\":\"...\",\"lieu\":\"...\",\"dates\":\"...\",\"detail\":\"...\"}],\"competences\":[{\"categorie\":\"...\",\"detail\":\"...\"}],\"centres_interet\":\"...\",\"koda_score\":{\"total\":0,\"format\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"contenu\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"mots_cles\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"impact\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"top_improvement\":\"...\"}}`;\n\nconst userPrompt = `DONNÉES DU JEUNE :\n\nIdentité : ${j.prenom || ''} ${j.nom || ''} | ${j.ville || ''} (${j.departement || ''}) | Tel: ${j.telephone || ''} | Email: ${j.email || 'non renseigné'} | Genre: ${j.genre || ''}\n\nFormation : ${j.classe || 'non précisée'} | Secteur visé : ${j.secteur_vise || 'non précisé'}\nMNA : ${j.mna ? 'Oui (NE PAS mentionner)' : 'Non'} | Français : ${j.niveau_francais_declare || '?'} | Dispo : ${j.disponibilite || '?'}\nBesoins : ${j.besoins || ''} | Attentes : ${(j.attentes_mentor || '').substring(0, 800)}\n\nSkills IA : ${j.skills_inferees || 'Aucune'}\n\nNotes mentor (resume_suivi) :\n${(j.resume_suivi || 'Aucune').substring(0, 2000)}\n\nConversations WA :\n${(j.conversations_recentes || 'Aucune').substring(0, 1500)}\n\nCONTEXTE ADDITIONNEL (infos collectées par l'agent dans la conversation CV) :\n${extra || 'Aucun — premier appel'}\n\nDécide : Phase 1 (poser une question) ou Phase 2 (générer le CV).`;\n\nreturn [{ json: { systemPrompt, userPrompt, jeune: j } }];"
       },
-      "id": "cv-build-prompt",
+      "id": "cv-prompt",
       "name": "📝 Construire prompt CV",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        750,
+        600,
         0
       ]
     },
@@ -86,7 +86,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2048, system: $json.systemPrompt, messages: [{ role: 'user', content: $json.userPrompt }] }) }}",
+        "jsonBody": "={{ JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,system:$json.systemPrompt,messages:[{role:'user',content:$json.userPrompt}]}) }}",
         "options": {
           "timeout": 30000
         }
@@ -96,21 +96,72 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1000,
+        850,
         0
       ],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================\n// Interpréter la réponse Sonnet : question OU CV généré\n// ============================================================\n\nconst sonnetResp = $('🧠 Claude Sonnet (CV)').first().json;\nconst jeune = $('📝 Construire prompt CV').first().json.jeune;\n\nlet result = {};\ntry {\n  const text = sonnetResp.content?.[0]?.text || '{}';\n  const cleaned = text.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  result = JSON.parse(cleaned);\n} catch(e) {\n  return [{ json: { response: 'Erreur lors de l\\'analyse du profil. Réessaie.' } }];\n}\n\n// === PHASE 1 : Poser une question ===\nif (result.phase === 'collect') {\n  let response = 'PHASE COLLECTE CV\\n\\n';\n  response += 'Données déjà trouvées :\\n';\n  if (result.data_found?.experiences?.length > 0) {\n    response += '- Expériences : ' + result.data_found.experiences.join(', ') + '\\n';\n  } else {\n    response += '- Expériences : aucune trouvée encore\\n';\n  }\n  if (result.data_found?.langues?.length > 0) {\n    response += '- Langues : ' + result.data_found.langues.join(', ') + '\\n';\n  }\n  if (result.data_found?.formations?.length > 0) {\n    response += '- Formations : ' + result.data_found.formations.join(', ') + '\\n';\n  }\n  response += '\\nIl manque encore : ' + (result.missing || []).join(', ') + '\\n';\n  response += '\\nQUESTION À POSER AU JEUNE (pose-la telle quelle, ne la reformule pas) :\\n';\n  response += result.next_question + '\\n';\n  response += '\\nContexte : ' + (result.question_context || '');\n  response += '\\n\\nQuand le jeune aura répondu, rappelle cet outil pour continuer la collecte ou générer le CV.';\n\n  return [{ json: { response, phase: 'collect' } }];\n}\n\n// === PHASE 2 : Générer le CV HTML ===\nconst cv = result;\n\nlet html = '<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"><style>';\nhtml += '@page{size:A4;margin:0}*{margin:0;padding:0;box-sizing:border-box}';\nhtml += 'body{font-family:Georgia,\"Times New Roman\",serif;font-size:10.5pt;line-height:1.4;color:#1a1a1a;background:white;width:210mm;min-height:297mm;padding:18mm 20mm 15mm 20mm}';\nhtml += '.header{text-align:center;margin-bottom:6mm}.header h1{font-size:22pt;font-weight:bold;letter-spacing:1.5px;margin-bottom:2mm}';\nhtml += '.header .contact{font-size:9.5pt;color:#444;line-height:1.6}.header .contact a{color:#1a5276;text-decoration:none}';\nhtml += '.header .titre{font-size:11pt;font-style:italic;color:#1a5276;margin-top:3mm}';\nhtml += '.section-title{text-align:center;font-size:11pt;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-top:5mm;margin-bottom:3mm;border-top:1px solid #1a1a1a;border-bottom:1px solid #1a1a1a;padding:1.5mm 0}';\nhtml += '.profil{font-size:10pt;text-align:justify;line-height:1.5;margin-bottom:2mm;color:#333}';\nhtml += '.exp{margin-bottom:4mm}.exp-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1mm}';\nhtml += '.exp-title{font-weight:bold;font-size:10.5pt;text-transform:uppercase}.exp-dates{font-style:italic;font-size:9pt;color:#555}';\nhtml += '.exp-lieu{font-style:italic;font-size:9.5pt;color:#555;margin-bottom:1.5mm}';\nhtml += '.cat{margin-bottom:1mm;font-size:10pt;line-height:1.45;text-align:justify}.cat-name{font-weight:bold}';\nhtml += '.form{margin-bottom:3mm}.form-header{display:flex;justify-content:space-between;align-items:baseline}';\nhtml += '.form-title{font-weight:bold;font-size:10.5pt;text-transform:uppercase}.form-dates{font-style:italic;font-size:9pt;color:#555}';\nhtml += '.form-lieu{font-style:italic;font-size:9.5pt;color:#555}.form-detail{font-size:9.5pt;color:#333;margin-top:0.5mm}';\nhtml += '.comp-line{margin-bottom:1.5mm;font-size:10pt;line-height:1.5}.comp-cat{font-weight:bold}';\nhtml += '.interets{font-size:10pt;color:#333}';\nhtml += '</style></head><body>';\n\n// Header\nhtml += '<div class=\"header\">';\nhtml += '<h1>' + (cv.prenom_nom || jeune.prenom + ' ' + (jeune.nom || '')) + '</h1>';\nhtml += '<div class=\"contact\">';\nif (cv.telephone) html += 'Téléphone : ' + cv.telephone + '<br>';\nif (cv.email && cv.email !== 'non renseigné') html += 'Email : <a href=\"mailto:' + cv.email + '\">' + cv.email + '</a>';\nhtml += '</div>';\nif (cv.titre) html += '<div class=\"titre\">' + cv.titre + '</div>';\nhtml += '</div>';\n\n// Profil\nif (cv.profil) {\n  html += '<div class=\"section-title\">Profil</div>';\n  html += '<div class=\"profil\">' + cv.profil + '</div>';\n}\n\n// Expériences\nif (cv.experiences && cv.experiences.length > 0) {\n  html += '<div class=\"section-title\">Expérience</div>';\n  for (const exp of cv.experiences) {\n    html += '<div class=\"exp\">';\n    html += '<div class=\"exp-header\"><span class=\"exp-title\">' + (exp.poste||'') + '</span><span class=\"exp-dates\">' + (exp.dates||'') + '</span></div>';\n    if (exp.lieu) html += '<div class=\"exp-lieu\">' + exp.lieu + '</div>';\n    if (exp.categories) {\n      for (const cat of exp.categories) {\n        html += '<div class=\"cat\"><span class=\"cat-name\">' + cat.nom + ' : </span>' + cat.detail + '</div>';\n      }\n    }\n    html += '</div>';\n  }\n}\n\n// Formations\nif (cv.formations && cv.formations.length > 0) {\n  html += '<div class=\"section-title\">Formation</div>';\n  for (const f of cv.formations) {\n    html += '<div class=\"form\">';\n    html += '<div class=\"form-header\"><span class=\"form-title\">' + (f.diplome||'') + '</span><span class=\"form-dates\">' + (f.dates||'') + '</span></div>';\n    if (f.lieu) html += '<div class=\"form-lieu\">' + f.lieu + '</div>';\n    if (f.detail) html += '<div class=\"form-detail\">' + f.detail + '</div>';\n    html += '</div>';\n  }\n}\n\n// Compétences\nif (cv.competences && cv.competences.length > 0) {\n  html += '<div class=\"section-title\">Compétences</div>';\n  for (const c of cv.competences) {\n    html += '<div class=\"comp-line\"><span class=\"comp-cat\">' + c.categorie + ' : </span>' + c.detail + '</div>';\n  }\n}\n\n// Centres d'intérêt\nif (cv.centres_interet) {\n  html += '<div class=\"section-title\">Centres d\\'intérêt</div>';\n  html += '<div class=\"interets\">' + cv.centres_interet + '</div>';\n}\n\nhtml += '</body></html>';\n\n// Résumé pour l'agent\nlet summary = 'CV GÉNÉRÉ !\\n\\n';\nsummary += 'Titre : ' + (cv.titre || '') + '\\n';\nsummary += 'Profil : ' + (cv.profil || '').substring(0, 150) + '...\\n\\n';\nif (cv.experiences) {\n  summary += 'Expériences :\\n';\n  cv.experiences.forEach(e => { summary += '- ' + e.poste + ' (' + e.dates + ')\\n'; });\n}\nif (cv.formations) {\n  summary += '\\nFormations :\\n';\n  cv.formations.forEach(f => { summary += '- ' + f.diplome + ' (' + f.dates + ')\\n'; });\n}\nsummary += '\\nPrésente ce récap au jeune et demande-lui si c\\'est bon ou s\\'il veut modifier quelque chose.';\nsummary += '\\nLe HTML du CV est prêt pour conversion en PDF.';\n\nreturn [{ json: { response: summary, phase: 'generate', cv_html: html, cv_json: cv } }];"
+        "jsCode": "const sonnetResp = $('🧠 Claude Sonnet (CV)').first().json;\nlet result = {};\ntry {\n  const text = sonnetResp.content?.[0]?.text || '{}';\n  result = JSON.parse(text.replace(/```json\\n?/g,'').replace(/```\\n?/g,'').trim());\n} catch(e) {\n  return [{ json: { response: 'Erreur analyse CV: ' + e.message, phase: 'error', needs_critique: false } }];\n}\n\n// === PHASE COLLECT ===\nif (result.phase === 'collect') {\n  let resp = 'PHASE COLLECTE\\n\\n';\n  resp += 'Trouvé : ' + JSON.stringify(result.data_found || {}) + '\\n';\n  resp += 'Manque : ' + (result.missing || []).join(', ') + '\\n\\n';\n  resp += 'QUESTION À POSER (telle quelle) :\\n' + (result.next_question || '') + '\\n\\n';\n  resp += 'Quand le jeune répond, rappelle build_cv avec ID + résumé cumulatif.';\n  return [{ json: { response: resp, phase: 'collect', needs_critique: false } }];\n}\n\n// === PHASE GENERATE ===\nconst score = result.koda_score?.total || 0;\n\nif (score < 70) {\n  // Needs improvement — build critique prompt for Haiku\n  const critiquePrompt = `Ce CV a obtenu un score de ${score}/100. Voici les feedbacks :\nFORMAT (${result.koda_score?.format?.score}/25) : ${result.koda_score?.format?.feedback}\nCONTENU (${result.koda_score?.contenu?.score}/25) : ${result.koda_score?.contenu?.feedback}\nMOTS-CLÉS (${result.koda_score?.mots_cles?.score}/25) : ${result.koda_score?.mots_cles?.feedback}\nIMPACT (${result.koda_score?.impact?.score}/25) : ${result.koda_score?.impact?.feedback}\n\nAmélioration prioritaire : ${result.koda_score?.top_improvement}\n\nCV actuel en JSON :\n${JSON.stringify(result, null, 2).substring(0, 3000)}\n\nAMÉLIORE ce CV en appliquant les feedbacks. Retourne le CV complet en JSON amélioré (même structure), avec un nouveau koda_score.`;\n\n  return [{ json: {\n    phase: 'generate',\n    needs_critique: true,\n    cv_json: result,\n    koda_score: result.koda_score,\n    critique_system: 'Tu es un expert CV. Améliore ce CV junior en appliquant les critiques. Garde la même structure JSON. Ne mens pas, ne fabrique rien. Valorise mieux ce qui existe.',\n    critique_prompt: critiquePrompt\n  } }];\n}\n\n// Score >= 70 — CV is good enough\nreturn [{ json: {\n  phase: 'generate',\n  needs_critique: false,\n  cv_json: result,\n  koda_score: result.koda_score\n} }];"
       },
-      "id": "cv-html",
-      "name": "🎨 Construire HTML",
+      "id": "cv-eval",
+      "name": "🔍 Évaluer et Router",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1250,
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "=COLLER_VOTRE_CLE_ANTHROPIC_ICI"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.needs_critique ? JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2048,system:$json.critique_system||'Passthrough',messages:[{role:'user',content:$json.critique_prompt||'No critique needed'}]}) : JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'ok'}]}) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "cv-haiku",
+      "name": "🧠 Haiku Critique",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1350,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const evalData = $('🔍 Évaluer et Router').first().json;\n\n// If collect phase, just return the question\nif (evalData.phase === 'collect' || evalData.phase === 'error') {\n  return [{ json: { response: evalData.response, phase: evalData.phase } }];\n}\n\n// Get the CV — either improved by Haiku or original from Sonnet\nlet cv = evalData.cv_json;\nlet score = evalData.koda_score;\n\nif (evalData.needs_critique) {\n  try {\n    const haikuResp = $('🧠 Haiku Critique').first().json;\n    const text = haikuResp.content?.[0]?.text || '';\n    const improved = JSON.parse(text.replace(/```json\\n?/g,'').replace(/```\\n?/g,'').trim());\n    if (improved.prenom_nom) {\n      cv = improved;\n      score = improved.koda_score || score;\n    }\n  } catch(e) { /* keep original */ }\n}\n\n// Build HTML\nlet h = '<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"><style>';\nh += '@page{size:A4;margin:0}*{margin:0;padding:0;box-sizing:border-box}';\nh += 'body{font-family:Georgia,\"Times New Roman\",serif;font-size:10.5pt;line-height:1.4;color:#1a1a1a;width:210mm;min-height:297mm;padding:18mm 20mm 15mm 20mm}';\nh += '.hdr{text-align:center;margin-bottom:6mm}.hdr h1{font-size:22pt;font-weight:bold;letter-spacing:1.5px;margin-bottom:2mm}';\nh += '.hdr .ct{font-size:9.5pt;color:#444;line-height:1.6}.hdr .ct a{color:#1a5276;text-decoration:none}';\nh += '.hdr .tt{font-size:11pt;font-style:italic;color:#1a5276;margin-top:3mm}';\nh += '.st{text-align:center;font-size:11pt;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-top:5mm;margin-bottom:3mm;border-top:1px solid #1a1a1a;border-bottom:1px solid #1a1a1a;padding:1.5mm 0}';\nh += '.pr{font-size:10pt;text-align:justify;line-height:1.5;margin-bottom:2mm;color:#333}';\nh += '.ex{margin-bottom:4mm}.exh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1mm}';\nh += '.ext{font-weight:bold;font-size:10.5pt;text-transform:uppercase}.exd{font-style:italic;font-size:9pt;color:#555}';\nh += '.exl{font-style:italic;font-size:9.5pt;color:#555;margin-bottom:1.5mm}';\nh += '.ca{margin-bottom:1mm;font-size:10pt;line-height:1.45;text-align:justify}.cn{font-weight:bold}';\nh += '.fm{margin-bottom:3mm}.fmh{display:flex;justify-content:space-between;align-items:baseline}';\nh += '.fmt{font-weight:bold;font-size:10.5pt;text-transform:uppercase}.fmd{font-style:italic;font-size:9pt;color:#555}';\nh += '.fml{font-style:italic;font-size:9.5pt;color:#555}.fmdt{font-size:9.5pt;color:#333;margin-top:0.5mm}';\nh += '.cl{margin-bottom:1.5mm;font-size:10pt;line-height:1.5}.cc{font-weight:bold}';\nh += '.it{font-size:10pt;color:#333}';\nh += '</style></head><body>';\n\nh += '<div class=\"hdr\"><h1>' + (cv.prenom_nom||'') + '</h1>';\nh += '<div class=\"ct\">';\nif (cv.telephone) h += 'Téléphone : ' + cv.telephone + '<br>';\nif (cv.email && cv.email !== 'non renseigné') h += 'Email : <a href=\"mailto:'+cv.email+'\">'+cv.email+'</a>';\nh += '</div>';\nif (cv.titre) h += '<div class=\"tt\">' + cv.titre + '</div>';\nh += '</div>';\n\nif (cv.profil) { h += '<div class=\"st\">Profil</div><div class=\"pr\">' + cv.profil + '</div>'; }\n\nif (cv.experiences?.length > 0) {\n  h += '<div class=\"st\">Expérience</div>';\n  for (const e of cv.experiences) {\n    h += '<div class=\"ex\"><div class=\"exh\"><span class=\"ext\">'+(e.poste||'')+'</span><span class=\"exd\">'+(e.dates||'')+'</span></div>';\n    if (e.lieu) h += '<div class=\"exl\">'+e.lieu+'</div>';\n    if (e.categories) { for (const c of e.categories) { h += '<div class=\"ca\"><span class=\"cn\">'+c.nom+' : </span>'+c.detail+'</div>'; } }\n    h += '</div>';\n  }\n}\n\nif (cv.formations?.length > 0) {\n  h += '<div class=\"st\">Formation</div>';\n  for (const f of cv.formations) {\n    h += '<div class=\"fm\"><div class=\"fmh\"><span class=\"fmt\">'+(f.diplome||'')+'</span><span class=\"fmd\">'+(f.dates||'')+'</span></div>';\n    if (f.lieu) h += '<div class=\"fml\">'+f.lieu+'</div>';\n    if (f.detail) h += '<div class=\"fmdt\">'+f.detail+'</div>';\n    h += '</div>';\n  }\n}\n\nif (cv.competences?.length > 0) {\n  h += '<div class=\"st\">Compétences</div>';\n  for (const c of cv.competences) { h += '<div class=\"cl\"><span class=\"cc\">'+c.categorie+' : </span>'+c.detail+'</div>'; }\n}\n\nif (cv.centres_interet) { h += '<div class=\"st\">Centres d\\'intérêt</div><div class=\"it\">'+cv.centres_interet+'</div>'; }\nh += '</body></html>';\n\n// Build summary for agent\nlet summary = 'CV GÉNÉRÉ ! Koda Score : ' + (score?.total || '?') + '/100\\n\\n';\nsummary += 'Titre : ' + (cv.titre || '') + '\\n';\nif (cv.experiences) { summary += '\\nExpériences :\\n'; cv.experiences.forEach(e => { summary += '- ' + e.poste + ' (' + (e.dates||'') + ')\\n'; }); }\nif (cv.formations) { summary += '\\nFormations :\\n'; cv.formations.forEach(f => { summary += '- ' + f.diplome + '\\n'; }); }\nif (score) {\n  summary += '\\nDétail score :\\n';\n  summary += '- Format : ' + (score.format?.score||'?') + '/25\\n';\n  summary += '- Contenu : ' + (score.contenu?.score||'?') + '/25\\n';\n  summary += '- Mots-clés : ' + (score.mots_cles?.score||'?') + '/25\\n';\n  summary += '- Impact : ' + (score.impact?.score||'?') + '/25\\n';\n  summary += '\\nAmélioration suggérée : ' + (score.top_improvement || 'Aucune') + '\\n';\n}\nsummary += '\\nPrésente ce récap au jeune avec le score et demande si c\\'est bon.';\n\nreturn [{ json: { response: summary, phase: 'generate', cv_html: h, cv_json: cv, koda_score: score } }];"
+      },
+      "id": "cv-html",
+      "name": "🎨 Construire HTML final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
         0
       ]
     }
@@ -164,7 +215,29 @@
       "main": [
         [
           {
-            "node": "🎨 Construire HTML",
+            "node": "🔍 Évaluer et Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Évaluer et Router": {
+      "main": [
+        [
+          {
+            "node": "🧠 Haiku Critique",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Haiku Critique": {
+      "main": [
+        [
+          {
+            "node": "🎨 Construire HTML final",
             "type": "main",
             "index": 0
           }
@@ -176,7 +249,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "koda-cv-v1",
+  "versionId": "koda-cv-v2-adversarial",
   "meta": {
     "instanceId": "koda-les-ombres"
   },
