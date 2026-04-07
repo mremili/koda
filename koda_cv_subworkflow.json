@@ -164,6 +164,74 @@
         1600,
         0
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer l'upload du CV HTML vers Supabase Storage\nconst cvData = $('🎨 Construire HTML final').first().json;\n\nif (!cvData.cv_html || cvData.phase !== 'generate') {\n  // Pas de CV à uploader (phase collect ou erreur)\n  return [{ json: { ...cvData, cv_url: null } }];\n}\n\nconst prenom = (cvData.cv_json?.prenom_nom || 'cv').replace(/[^a-zA-Z0-9]/g, '_');\nconst timestamp = Date.now();\nconst filename = `${prenom}_${timestamp}.html`;\n\nreturn [{ json: {\n  ...cvData,\n  filename,\n  upload_url: `https://jgqalweqpifycuhootmx.supabase.co/storage/v1/object/koda-cv/${filename}`,\n  public_url: `https://jgqalweqpifycuhootmx.supabase.co/storage/v1/object/public/koda-cv/${filename}`,\n  cv_html_body: cvData.cv_html\n} }];"
+      },
+      "id": "cv-prep-upload",
+      "name": "📦 Préparer upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1850,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.upload_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=COLLER_VOTRE_SERVICE_ROLE_KEY_ICI"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer COLLER_VOTRE_SERVICE_ROLE_KEY_ICI"
+            },
+            {
+              "name": "Content-Type",
+              "value": "text/html; charset=utf-8"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $json.cv_html_body }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "cv-upload-http",
+      "name": "📤 Upload vers Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2100,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ajouter l'URL publique à la réponse\nconst prepData = $('📦 Préparer upload').first().json;\n\nreturn [{ json: {\n  response: prepData.response,\n  phase: prepData.phase,\n  cv_json: prepData.cv_json,\n  cv_html: prepData.cv_html_body,\n  koda_score: prepData.koda_score,\n  cv_url: prepData.public_url || null\n} }];"
+      },
+      "id": "cv-final",
+      "name": "✅ Résultat final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2350,
+        0
+      ]
     }
   ],
   "connections": {
@@ -238,6 +306,39 @@
         [
           {
             "node": "🎨 Construire HTML final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎨 Construire HTML final": {
+      "main": [
+        [
+          {
+            "node": "📦 Préparer upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Préparer upload": {
+      "main": [
+        [
+          {
+            "node": "📤 Upload vers Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Upload vers Supabase": {
+      "main": [
+        [
+          {
+            "node": "✅ Résultat final",
             "type": "main",
             "index": 0
           }
