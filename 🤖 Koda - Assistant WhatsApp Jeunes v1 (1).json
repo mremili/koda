@@ -338,6 +338,25 @@
           "name": "WA Koda"
         }
       }
+    },
+    {
+      "parameters": {
+        "mode": "each",
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "options": {}
+      },
+      "id": "koda-cv-exec-001",
+      "name": "📄 Exécuter CV Builder",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3350,
+        0
+      ]
     }
   ],
   "pinData": {},
@@ -508,6 +527,17 @@
       ]
     },
     "📦 Préparer données CV": {
+      "main": [
+        [
+          {
+            "node": "📄 Exécuter CV Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📄 Exécuter CV Builder": {
       "main": [
         [
           {
