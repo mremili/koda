@@ -167,45 +167,10 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "=INSERT INTO koda_cv (id, jeune_id, cv_html, cv_json, koda_score, pdf_base64) VALUES (gen_random_uuid()::text, '{{ $('🔧 Parser input').first().json.airtable_id }}', '{{ $json.cv_html.replace(/'/g, \"''\") }}', '{{ JSON.stringify($json.cv_json || {}).replace(/'/g, \"''\") }}'::jsonb, '{{ JSON.stringify($json.koda_score || {}).replace(/'/g, \"''\") }}'::jsonb, '{{ $json.pdf_base64 || '' }}') RETURNING id;",
-        "options": {}
+        "jsCode": "// Créer le binary data pour Gotenberg\nconst htmlData = $('🎨 Construire HTML final').first().json;\n\nif (htmlData.phase !== 'generate' || !htmlData.cv_html) {\n  return [{ json: { ...htmlData, skip_pdf: true } }];\n}\n\n// btoa fonctionne en sandbox n8n pour de l'ASCII/Latin1\n// Pour l'UTF-8, on utilise encodeURIComponent + unescape\nconst html = htmlData.cv_html;\nconst base64 = btoa(unescape(encodeURIComponent(html)));\n\nreturn [{\n  json: { ...htmlData, skip_pdf: false },\n  binary: {\n    file: {\n      data: base64,\n      mimeType: 'text/html',\n      fileName: 'index.html'\n    }\n  }\n}];"
       },
-      "id": "cv-save-pg",
-      "name": "💾 Sauver CV dans Postgres",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        2450,
-        0
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "2raQuLNZ5pOeUkJC",
-          "name": "Postgres LO_BIA"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Construire la réponse finale avec l'URL du CV\nconst htmlData = $('🎨 Construire HTML final').first().json;\nconst saveResult = $('💾 Sauver CV dans Postgres').first().json;\n\nconst cvId = saveResult.id || 'error';\nconst cvUrl = 'https://jgqalweqpifycuhootmx.supabase.co/functions/v1/serve-cv?id=' + cvId;\n\nreturn [{ json: {\n  response: htmlData.response,\n  phase: htmlData.phase,\n  cv_json: htmlData.cv_json,\n  cv_html: htmlData.cv_html,\n  koda_score: htmlData.koda_score,\n  cv_url: cvUrl,\n  cv_id: cvId\n} }];"
-      },
-      "id": "cv-final",
-      "name": "✅ Résultat final",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2650,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Préparer le HTML pour envoi à Gotenberg\nconst htmlData = $('🎨 Construire HTML final').first().json;\n\nif (htmlData.phase !== 'generate' || !htmlData.cv_html) {\n  return [{ json: { ...htmlData, pdf_base64: null, skip_pdf: true } }];\n}\n\n// Encoder le HTML en base64 manuellement (pas de Buffer en sandbox)\nfunction utf8ToBase64(str) {\n  const utf8 = unescape(encodeURIComponent(str));\n  let base64 = '';\n  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n  let i = 0;\n  while (i < utf8.length) {\n    const a = utf8.charCodeAt(i++);\n    const b = i < utf8.length ? utf8.charCodeAt(i++) : 0;\n    const c = i < utf8.length ? utf8.charCodeAt(i++) : 0;\n    const triplet = (a << 16) | (b << 8) | c;\n    base64 += chars[(triplet >> 18) & 63];\n    base64 += chars[(triplet >> 12) & 63];\n    base64 += i > utf8.length + 1 ? '=' : chars[(triplet >> 6) & 63];\n    base64 += i > utf8.length ? '=' : chars[triplet & 63];\n  }\n  return base64;\n}\n\nconst htmlBase64 = utf8ToBase64(htmlData.cv_html);\n\nreturn [{\n  json: { ...htmlData, skip_pdf: false },\n  binary: {\n    file: {\n      data: htmlBase64,\n      mimeType: 'text/html',\n      fileName: 'index.html'\n    }\n  }\n}];"
-      },
-      "id": "cv-prep-pdf",
-      "name": "📦 Préparer HTML pour PDF",
+      "id": "cv-tofile",
+      "name": "📦 HTML vers fichier",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -237,7 +202,7 @@
           "timeout": 30000
         }
       },
-      "id": "cv-gotenberg-http",
+      "id": "cv-gotenberg",
       "name": "📄 Gotenberg HTML→PDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -249,14 +214,56 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extraire le PDF en base64 depuis la réponse binaire de Gotenberg\nconst htmlData = $('📦 Préparer HTML pour PDF').first().json;\nconst binaryData = $input.first().binary;\n\nlet pdfBase64 = null;\n\nif (binaryData && binaryData.data) {\n  pdfBase64 = binaryData.data.data || '';\n} else if (binaryData && binaryData.file) {\n  pdfBase64 = binaryData.file.data || '';\n}\n\n// Chercher dans toutes les clés binary\nif (!pdfBase64) {\n  const binKeys = Object.keys(binaryData || {});\n  for (const key of binKeys) {\n    if (binaryData[key] && binaryData[key].data) {\n      pdfBase64 = binaryData[key].data;\n      break;\n    }\n  }\n}\n\nreturn [{ json: {\n  ...htmlData,\n  pdf_base64: pdfBase64,\n  pdf_error: pdfBase64 ? null : 'PDF non généré'\n} }];"
+        "method": "POST",
+        "url": "=https://jgqalweqpifycuhootmx.supabase.co/storage/v1/object/koda-cv/{{ $('🔧 Parser input').first().json.airtable_id }}_{{ Date.now() }}.pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=COLLER_VOTRE_SERVICE_ROLE_KEY_ICI"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer COLLER_VOTRE_SERVICE_ROLE_KEY_ICI"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/pdf"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "=data",
+        "options": {
+          "timeout": 15000
+        }
       },
-      "id": "cv-extract-pdf",
-      "name": "📎 Extraire PDF base64",
+      "id": "cv-upload-pdf",
+      "name": "📤 Upload PDF Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2250,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construire la réponse avec le lien PDF\nconst htmlData = $('📦 HTML vers fichier').first().json;\nconst parsedInput = $('🔧 Parser input').first().json;\n\n// Construire l'URL publique du PDF\nconst uploadResp = $('📤 Upload PDF Supabase').first().json;\nconst key = uploadResp.Key || uploadResp.key || '';\nconst pdfUrl = key \n  ? 'https://jgqalweqpifycuhootmx.supabase.co/storage/v1/object/public/' + key\n  : '';\n\nreturn [{ json: {\n  response: htmlData.response,\n  phase: htmlData.phase,\n  cv_json: htmlData.cv_json,\n  koda_score: htmlData.koda_score,\n  cv_url: pdfUrl,\n  cv_id: key\n} }];"
+      },
+      "id": "cv-final",
+      "name": "✅ Résultat final",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2250,
+        2450,
         0
       ]
     }
@@ -343,18 +350,7 @@
       "main": [
         [
           {
-            "node": "📦 Préparer HTML pour PDF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "💾 Sauver CV dans Postgres": {
-      "main": [
-        [
-          {
-            "node": "✅ Résultat final",
+            "node": "📦 HTML vers fichier",
             "type": "main",
             "index": 0
           }
@@ -365,14 +361,14 @@
       "main": [
         [
           {
-            "node": "📎 Extraire PDF base64",
+            "node": "📤 Upload PDF Supabase",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "📦 Préparer HTML pour PDF": {
+    "📦 HTML vers fichier": {
       "main": [
         [
           {
@@ -383,11 +379,11 @@
         ]
       ]
     },
-    "📎 Extraire PDF base64": {
+    "📤 Upload PDF Supabase": {
       "main": [
         [
           {
-            "node": "💾 Sauver CV dans Postgres",
+            "node": "✅ Résultat final",
             "type": "main",
             "index": 0
           }
