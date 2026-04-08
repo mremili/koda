@@ -168,7 +168,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO koda_cv (id, jeune_id, cv_html, cv_json, koda_score) VALUES (gen_random_uuid()::text, '{{ $('🔧 Parser input').first().json.airtable_id }}', '{{ $json.cv_html.replace(/'/g, \"''\") }}', '{{ JSON.stringify($json.cv_json || {}).replace(/'/g, \"''\") }}'::jsonb, '{{ JSON.stringify($json.koda_score || {}).replace(/'/g, \"''\") }}'::jsonb) RETURNING id;",
+        "query": "=INSERT INTO koda_cv (id, jeune_id, cv_html, cv_json, koda_score, pdf_base64) VALUES (gen_random_uuid()::text, '{{ $('🔧 Parser input').first().json.airtable_id }}', '{{ $json.cv_html.replace(/'/g, \"''\") }}', '{{ JSON.stringify($json.cv_json || {}).replace(/'/g, \"''\") }}'::jsonb, '{{ JSON.stringify($json.koda_score || {}).replace(/'/g, \"''\") }}'::jsonb, '{{ $json.pdf_base64 || '' }}') RETURNING id;",
         "options": {}
       },
       "id": "cv-save-pg",
@@ -197,6 +197,19 @@
       "typeVersion": 2,
       "position": [
         2100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Appeler Gotenberg pour convertir HTML en PDF\nconst htmlData = $('🎨 Construire HTML final').first().json;\n\nif (htmlData.phase !== 'generate' || !htmlData.cv_html) {\n  // Pas de CV à convertir (phase collect ou erreur)\n  return [{ json: { ...htmlData, pdf_base64: null } }];\n}\n\n// Gotenberg attend un multipart/form-data avec un fichier HTML\nconst formData = new FormData();\nconst htmlBlob = new Blob([htmlData.cv_html], { type: 'text/html' });\nformData.append('files', htmlBlob, 'index.html');\nformData.append('paperWidth', '8.27');\nformData.append('paperHeight', '11.69');\nformData.append('marginTop', '0');\nformData.append('marginBottom', '0');\nformData.append('marginLeft', '0');\nformData.append('marginRight', '0');\n\ntry {\n  const resp = await fetch('https://gotenberggotenberg8-production-8370.up.railway.app/forms/chromium/convert/html', {\n    method: 'POST',\n    body: formData\n  });\n\n  if (!resp.ok) {\n    const errText = await resp.text();\n    return [{ json: { ...htmlData, pdf_base64: null, pdf_error: 'Gotenberg error: ' + resp.status + ' ' + errText } }];\n  }\n\n  const pdfBuffer = await resp.arrayBuffer();\n  const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));\n\n  return [{ json: {\n    ...htmlData,\n    pdf_base64: pdfBase64,\n    pdf_size: pdfBuffer.byteLength\n  } }];\n} catch(e) {\n  return [{ json: { ...htmlData, pdf_base64: null, pdf_error: e.message } }];\n}"
+      },
+      "id": "cv-gotenberg",
+      "name": "📄 Gotenberg HTML→PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
         0
       ]
     }
@@ -283,7 +296,7 @@
       "main": [
         [
           {
-            "node": "💾 Sauver CV dans Postgres",
+            "node": "📄 Gotenberg HTML→PDF",
             "type": "main",
             "index": 0
           }
@@ -295,6 +308,17 @@
         [
           {
             "node": "✅ Résultat final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📄 Gotenberg HTML→PDF": {
+      "main": [
+        [
+          {
+            "node": "💾 Sauver CV dans Postgres",
             "type": "main",
             "index": 0
           }
