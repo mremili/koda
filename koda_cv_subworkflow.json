@@ -176,7 +176,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        1850,
+        2450,
         0
       ],
       "credentials": {
@@ -196,20 +196,67 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2100,
+        2650,
         0
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Appeler Gotenberg pour convertir HTML en PDF\nconst htmlData = $('🎨 Construire HTML final').first().json;\n\nif (htmlData.phase !== 'generate' || !htmlData.cv_html) {\n  // Pas de CV à convertir (phase collect ou erreur)\n  return [{ json: { ...htmlData, pdf_base64: null } }];\n}\n\n// Gotenberg attend un multipart/form-data avec un fichier HTML\nconst formData = new FormData();\nconst htmlBlob = new Blob([htmlData.cv_html], { type: 'text/html' });\nformData.append('files', htmlBlob, 'index.html');\nformData.append('paperWidth', '8.27');\nformData.append('paperHeight', '11.69');\nformData.append('marginTop', '0');\nformData.append('marginBottom', '0');\nformData.append('marginLeft', '0');\nformData.append('marginRight', '0');\n\ntry {\n  const resp = await fetch('https://gotenberggotenberg8-production-8370.up.railway.app/forms/chromium/convert/html', {\n    method: 'POST',\n    body: formData\n  });\n\n  if (!resp.ok) {\n    const errText = await resp.text();\n    return [{ json: { ...htmlData, pdf_base64: null, pdf_error: 'Gotenberg error: ' + resp.status + ' ' + errText } }];\n  }\n\n  const pdfBuffer = await resp.arrayBuffer();\n  const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));\n\n  return [{ json: {\n    ...htmlData,\n    pdf_base64: pdfBase64,\n    pdf_size: pdfBuffer.byteLength\n  } }];\n} catch(e) {\n  return [{ json: { ...htmlData, pdf_base64: null, pdf_error: e.message } }];\n}"
+        "jsCode": "// Préparer le HTML pour envoi à Gotenberg\nconst htmlData = $('🎨 Construire HTML final').first().json;\n\nif (htmlData.phase !== 'generate' || !htmlData.cv_html) {\n  return [{ json: { ...htmlData, pdf_base64: null, skip_pdf: true } }];\n}\n\n// n8n peut envoyer un fichier via le binary data\n// On crée un item avec le HTML en binary\nconst htmlBuffer = Buffer.from(htmlData.cv_html, 'utf-8');\n\nreturn [{\n  json: { ...htmlData, skip_pdf: false },\n  binary: {\n    file: {\n      data: htmlBuffer.toString('base64'),\n      mimeType: 'text/html',\n      fileName: 'index.html'\n    }\n  }\n}];"
       },
-      "id": "cv-gotenberg",
-      "name": "📄 Gotenberg HTML→PDF",
+      "id": "cv-prep-pdf",
+      "name": "📦 Préparer HTML pour PDF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1950,
+        1850,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gotenberggotenberg8-production-8370.up.railway.app/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "cv-gotenberg-http",
+      "name": "📄 Gotenberg HTML→PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2050,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraire le PDF en base64 depuis la réponse binaire de Gotenberg\nconst htmlData = $('📦 Préparer HTML pour PDF').first().json;\nconst binaryData = $input.first().binary;\n\nlet pdfBase64 = null;\n\nif (binaryData && binaryData.data) {\n  pdfBase64 = binaryData.data.data || '';\n} else if (binaryData && binaryData.file) {\n  pdfBase64 = binaryData.file.data || '';\n}\n\n// Chercher dans toutes les clés binary\nif (!pdfBase64) {\n  const binKeys = Object.keys(binaryData || {});\n  for (const key of binKeys) {\n    if (binaryData[key] && binaryData[key].data) {\n      pdfBase64 = binaryData[key].data;\n      break;\n    }\n  }\n}\n\nreturn [{ json: {\n  ...htmlData,\n  pdf_base64: pdfBase64,\n  pdf_error: pdfBase64 ? null : 'PDF non généré'\n} }];"
+      },
+      "id": "cv-extract-pdf",
+      "name": "📎 Extraire PDF base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2250,
         0
       ]
     }
@@ -296,7 +343,7 @@
       "main": [
         [
           {
-            "node": "📄 Gotenberg HTML→PDF",
+            "node": "📦 Préparer HTML pour PDF",
             "type": "main",
             "index": 0
           }
@@ -315,6 +362,28 @@
       ]
     },
     "📄 Gotenberg HTML→PDF": {
+      "main": [
+        [
+          {
+            "node": "📎 Extraire PDF base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Préparer HTML pour PDF": {
+      "main": [
+        [
+          {
+            "node": "📄 Gotenberg HTML→PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📎 Extraire PDF base64": {
       "main": [
         [
           {
