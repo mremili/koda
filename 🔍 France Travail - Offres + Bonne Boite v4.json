@@ -1,5 +1,5 @@
 {
-  "name": "🔍 France Travail - Offres + Bonne Boite v4",
+  "name": "🔍 Koda - Offres + Alternance + Formations v6",
   "nodes": [
     {
       "parameters": {},
@@ -64,62 +64,7 @@
       "typeVersion": 4.2,
       "position": [
         -192,
-        -128
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://entreprise.francetravail.fr/connexion/oauth2/access_token",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "realm",
-              "value": "/partenaire"
-            }
-          ]
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/x-www-form-urlencoded"
-            }
-          ]
-        },
-        "sendBody": true,
-        "contentType": "form-urlencoded",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "grant_type",
-              "value": "client_credentials"
-            },
-            {
-              "name": "client_id",
-              "value": "=PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c"
-            },
-            {
-              "name": "client_secret",
-              "value": "=4483b16708d055691dbccd701be5a5d7fa6701c89c53a2c49b9322b542952cfa"
-            },
-            {
-              "name": "scope",
-              "value": "application_PAR_1jeuneconfie1emploi_7655c90b5cf49fb69404a0e15b867e9fc10f76c27ecc72660733d8bc027e0e3c api_labonneboitev2"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "8c359fd8-fbcf-4922-953a-3417ab054fcc",
-      "name": "🔐 Token Bonne Boite",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        -192,
-        128
+        -192
       ]
     },
     {
@@ -167,38 +112,43 @@
       "typeVersion": 4.2,
       "position": [
         128,
-        -128
+        -192
       ]
     },
     {
       "parameters": {
-        "url": "https://api.francetravail.io/partenaire/labonneboite/v2/recherche",
+        "jsCode": "// ============================================\n// 📊 Formater les offres d'emploi v2\n// ============================================\n\nconst offresData = $input.first().json;\nconst resultats = offresData.resultats || [];\n\nconst ROME_SECTEURS = {\n  'G1602': 'Restauration',\n  'G1603': 'Restauration',\n  'G1605': 'Restauration',\n  'N1103': 'Logistique',\n  'N1105': 'Logistique',\n  'F1702': 'BTP - Maçonnerie',\n  'F1603': 'BTP - Plomberie',\n  'F1613': 'BTP - Étanchéité',\n  'K2204': 'Nettoyage',\n  'D1507': 'Commerce - Mise en rayon',\n  'D1106': 'Commerce - Vente',\n  'D1102': 'Boulangerie',\n  'A1203': 'Paysagisme',\n  'I1606': 'Carrosserie',\n  'K1303': 'Petite enfance',\n  'H2301': 'Production industrielle',\n  'I1304': 'Maintenance industrielle'\n};\n\nconst offresFormatees = resultats.map(offre => {\n  const codeRome = offre.romeCode || '';\n  return {\n    id: offre.id,\n    titre: offre.intitule,\n    entreprise: offre.entreprise?.nom || 'Non communiqué',\n    lieu: offre.lieuTravail?.libelle || 'Non précisé',\n    code_postal: offre.lieuTravail?.codePostal || '',\n    contrat: offre.typeContratLibelle || offre.typeContrat || '',\n    nature_contrat: offre.natureContrat || '',\n    est_alternance: offre.alternance === true,\n    salaire: offre.salaire?.libelle || 'Non communiqué',\n    experience: offre.experienceExige || 'Non précisé',\n    competences: (offre.competences || []).map(c => c.libelle).join(', '),\n    description_courte: (offre.description || '').substring(0, 300) + '...',\n    url_offre: offre.origineOffre?.urlOrigine || `https://candidat.francetravail.fr/offres/recherche/detail/${offre.id}`,\n    date_creation: offre.dateCreation,\n    code_rome: codeRome,\n    metier: offre.romeLibelle,\n    secteur_ombres: ROME_SECTEURS[codeRome] || 'Autre',\n    qualification: offre.qualificationLibelle || '',\n    niveau_langue_requis: (offre.langues || []).map(l => `${l.libelle}: ${l.exigence}`).join(', ') || 'Non précisé',\n    permis_requis: (offre.permis || []).map(p => p.libelle).join(', ') || 'Non requis',\n    debutant_accepte: offre.experienceExige === 'D',\n    formations: (offre.formations || []).map(f => f.niveauLibelle).join(', ') || 'Non précisé'\n  };\n});\n\nconst stats = {\n  total_disponibles: offresData.contentRange?.maxResults || resultats.length,\n  nb_retournes: offresFormatees.length,\n  nb_alternance: offresFormatees.filter(o => o.est_alternance).length,\n  nb_debutant_accepte: offresFormatees.filter(o => o.debutant_accepte).length,\n  par_secteur: offresFormatees.reduce((acc, o) => {\n    acc[o.secteur_ombres] = (acc[o.secteur_ombres] || 0) + 1;\n    return acc;\n  }, {}),\n  par_contrat: offresFormatees.reduce((acc, o) => {\n    acc[o.contrat] = (acc[o.contrat] || 0) + 1;\n    return acc;\n  }, {})\n};\n\nreturn [{ json: { ...stats, offres: offresFormatees } }];"
+      },
+      "id": "52b360fb-49c1-4a59-9ffd-f0456b88c456",
+      "name": "⚙️ Formater Offres",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.apprentissage.beta.gouv.fr/api/job/v1/search",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
-              "name": "rome",
-              "value": "G1602,G1603,F1702,F1603,N1103,D1507"
+              "name": "latitude",
+              "value": "48.8566"
             },
             {
-              "name": "department_number",
-              "value": "75"
+              "name": "longitude",
+              "value": "2.3522"
             },
             {
-              "name": "distance",
+              "name": "radius",
               "value": "20"
             },
             {
-              "name": "page_size",
-              "value": "50"
-            },
-            {
-              "name": "sort_by",
-              "value": "hiring_potential"
-            },
-            {
-              "name": "sort_direction",
-              "value": "desc"
+              "name": "romes",
+              "value": "G1602,G1603,G1605,N1103,N1105,F1702,F1603,F1613,K2204,D1507,D1106,D1102,A1203,I1606,K1303,H2301,I1304"
             }
           ]
         },
@@ -207,7 +157,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $node['🔐 Token Bonne Boite'].json.access_token }}"
+              "value": "=Bearer eyJhbGciOiJIUzI1NiJ9.eyJfaWQiOiI2OWNiZGZiYzI5YjNlMDJmN2NkYjU0YTMiLCJhcGlfa2V5IjoieXBkNi95WkhnVDhPK25vdUxTRkFlcTVoWTl2OWFWeHFWK2hhU3NkT0phTT0iLCJvcmdhbmlzYXRpb24iOm51bGwsImVtYWlsIjoibW91cmFkLnJlbWlsaUBsZXMtb21icmVzLmNvbSIsImlzcyI6ImFwaSIsImlhdCI6MTc3NDk2ODc3NiwiZXhwIjoxODA2NTA0Nzc2fQ.5iKGnjdiuBPfRMV6rGJ12jmCyNf3WcrdUJDTGQaZwkg"
             },
             {
               "name": "Accept",
@@ -217,39 +167,95 @@
         },
         "options": {}
       },
-      "id": "0043505c-91c0-4f45-a037-6ec647ebf907",
-      "name": "🏢 Bonne Boite - Multi-secteurs Paris",
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "📋 Chercher Alternance IDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         128,
-        128
+        64
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 📊 Formater les offres d'emploi v2\n// ============================================\n\nconst offresData = $node['📋 Chercher Offres IDF'].json;\nconst resultats = offresData.resultats || [];\n\nconst ROME_SECTEURS = {\n  'G1602': 'Restauration',\n  'G1603': 'Restauration',\n  'G1605': 'Restauration',\n  'N1103': 'Logistique',\n  'N1105': 'Logistique',\n  'F1702': 'BTP - Maçonnerie',\n  'F1603': 'BTP - Plomberie',\n  'F1613': 'BTP - Étanchéité',\n  'K2204': 'Nettoyage',\n  'D1507': 'Commerce - Mise en rayon',\n  'D1106': 'Commerce - Vente',\n  'D1102': 'Boulangerie',\n  'A1203': 'Paysagisme',\n  'I1606': 'Carrosserie',\n  'K1303': 'Petite enfance',\n  'H2301': 'Production industrielle',\n  'I1304': 'Maintenance industrielle'\n};\n\nconst offresFormatees = resultats.map(offre => {\n  const codeRome = offre.romeCode || '';\n  return {\n    id: offre.id,\n    titre: offre.intitule,\n    entreprise: offre.entreprise?.nom || 'Non communiqué',\n    lieu: offre.lieuTravail?.libelle || 'Non précisé',\n    code_postal: offre.lieuTravail?.codePostal || '',\n    contrat: offre.typeContratLibelle || offre.typeContrat || '',\n    nature_contrat: offre.natureContrat || '',\n    est_alternance: offre.alternance === true,\n    salaire: offre.salaire?.libelle || 'Non communiqué',\n    experience: offre.experienceExige || 'Non précisé',\n    competences: (offre.competences || []).map(c => c.libelle).join(', '),\n    description_courte: (offre.description || '').substring(0, 300) + '...',\n    url_offre: offre.origineOffre?.urlOrigine || `https://candidat.francetravail.fr/offres/recherche/detail/${offre.id}`,\n    date_creation: offre.dateCreation,\n    code_rome: codeRome,\n    metier: offre.romeLibelle,\n    secteur_ombres: ROME_SECTEURS[codeRome] || 'Autre',\n    qualification: offre.qualificationLibelle || '',\n    niveau_langue_requis: (offre.langues || []).map(l => `${l.libelle}: ${l.exigence}`).join(', ') || 'Non précisé',\n    permis_requis: (offre.permis || []).map(p => p.libelle).join(', ') || 'Non requis',\n    debutant_accepte: offre.experienceExige === 'D',\n    formations: (offre.formations || []).map(f => f.niveauLibelle).join(', ') || 'Non précisé'\n  };\n});\n\nconst stats = {\n  total_disponibles: offresData.contentRange?.maxResults || resultats.length,\n  nb_retournes: offresFormatees.length,\n  nb_alternance: offresFormatees.filter(o => o.est_alternance).length,\n  nb_debutant_accepte: offresFormatees.filter(o => o.debutant_accepte).length,\n  par_secteur: offresFormatees.reduce((acc, o) => {\n    acc[o.secteur_ombres] = (acc[o.secteur_ombres] || 0) + 1;\n    return acc;\n  }, {}),\n  par_contrat: offresFormatees.reduce((acc, o) => {\n    acc[o.contrat] = (acc[o.contrat] || 0) + 1;\n    return acc;\n  }, {})\n};\n\nreturn [{ json: { ...stats, offres: offresFormatees } }];"
+        "jsCode": "// ============================================\n// 🎓 Formater La Bonne Alternance\n// ============================================\n\nconst data = $input.first().json;\nconst jobs = data.jobs || [];\nconst recruiters = data.recruiters || [];\nconst warnings = data.warnings || [];\n\n// --- Formater les offres d'alternance ---\nconst offresFormatees = jobs.map(job => ({\n  source: job.identifier?.partner_label || 'Inconnu',\n  id_partenaire: job.identifier?.partner_job_id || '',\n  id_lba: job.identifier?.id || null,\n  titre: job.offer?.title || '',\n  description_courte: (job.offer?.description || '').substring(0, 300) + '...',\n  entreprise: job.workplace?.name || 'Non communiqué',\n  enseigne: job.workplace?.brand || '',\n  raison_sociale: job.workplace?.legal_name || '',\n  siret: job.workplace?.siret || '',\n  effectif: job.workplace?.size || '',\n  ville: job.workplace?.location?.city || '',\n  code_postal: job.workplace?.location?.zipCode || '',\n  site_web: job.workplace?.website || '',\n  naf: job.workplace?.domain?.naf?.code || '',\n  naf_label: job.workplace?.domain?.naf?.label || '',\n  opco: job.workplace?.domain?.opco || '',\n  type_contrat: (job.contract?.type || []).join(', '),\n  date_debut: job.contract?.start || '',\n  duree_mois: job.contract?.duration || null,\n  mode_travail: job.contract?.remote || '',\n  diplome_vise: job.offer?.target_diploma?.label || '',\n  niveau_diplome: job.offer?.target_diploma?.level || '',\n  codes_rome: (job.offer?.rome_codes || []).join(', '),\n  competences_attendues: (job.offer?.desired_skills || []).join('; '),\n  competences_a_acquerir: (job.offer?.to_be_acquired_skills || []).join('; '),\n  conditions_acces: (job.offer?.access_conditions || []).join('; '),\n  nb_postes: job.offer?.opening_count || 1,\n  date_creation: job.offer?.publication?.creation || '',\n  date_expiration: job.offer?.publication?.expiration || '',\n  url_candidature: job.apply?.url || '',\n  telephone: job.apply?.phone || '',\n  est_delegue_cfa: job.is_delegated || false\n}));\n\n// --- Formater les recruteurs potentiels ---\nconst recruteursFormates = recruiters.map(r => ({\n  id: r.identifier?.id || '',\n  source: r.identifier?.partner_label || 'recruteurs_lba',\n  entreprise: r.workplace?.name || 'Non communiqué',\n  enseigne: r.workplace?.brand || '',\n  raison_sociale: r.workplace?.legal_name || '',\n  siret: r.workplace?.siret || '',\n  effectif: r.workplace?.size || '',\n  ville: r.workplace?.location?.city || '',\n  code_postal: r.workplace?.location?.zipCode || '',\n  site_web: r.workplace?.website || '',\n  naf: r.workplace?.domain?.naf?.code || '',\n  naf_label: r.workplace?.domain?.naf?.label || '',\n  opco: r.workplace?.domain?.opco || '',\n  url_candidature: r.apply?.url || '',\n  telephone: r.apply?.phone || ''\n}));\n\n// --- Stats ---\nconst parSource = offresFormatees.reduce((acc, o) => {\n  acc[o.source] = (acc[o.source] || 0) + 1;\n  return acc;\n}, {});\n\nconst parContrat = offresFormatees.reduce((acc, o) => {\n  const t = o.type_contrat || 'Non précisé';\n  acc[t] = (acc[t] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'La Bonne Alternance',\n    zone: 'Paris + 20km',\n    nb_offres: offresFormatees.length,\n    nb_recruteurs: recruteursFormates.length,\n    par_source: parSource,\n    par_contrat: parContrat,\n    warnings: warnings,\n    offres: offresFormatees,\n    recruteurs: recruteursFormates\n  }\n}];"
       },
-      "id": "52b360fb-49c1-4a59-9ffd-f0456b88c456",
-      "name": "⚙️ Formater Offres",
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "⚙️ Formater Alternance",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         416,
-        -128
+        64
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🏢 Formater La Bonne Boite v2\n// ============================================\n\nconst bbData = $node['🏢 Bonne Boite - Multi-secteurs Paris'].json;\nconst items = bbData.items || [];\nconst totalHits = bbData.hits || 0;\n\nif (items.length === 0) {\n  return [{\n    json: {\n      source: 'La Bonne Boite v2',\n      status: 'Aucun résultat ou erreur API',\n      hits: totalHits,\n      raw_keys: Object.keys(bbData),\n      raw_preview: JSON.stringify(bbData).substring(0, 500),\n      conseil: 'Scope actuel ne marche pas. Essayer: labonneboite / api_labonneboitev1 / o2dsoffre api_labonneboitev2'\n    }\n  }];\n}\n\nconst entreprisesFormatees = items.map(e => ({\n  id: e.id,\n  siret: e.siret,\n  nom: e.company_name || e.office_name || 'Inconnu',\n  nom_emplacement: e.office_name || '',\n  ville: e.location?.city || '',\n  code_postal: e.location?.postcode || '',\n  departement: e.location?.department || '',\n  region: e.location?.region || '',\n  code_naf: e.naf || '',\n  secteur: e.naf_label || '',\n  effectif_min: e.headcount_min,\n  effectif_max: e.headcount_max,\n  potentiel_embauche: e.hiring_potential,\n  fort_potentiel: e.is_high_potential || false,\n  code_rome: e.rome || ''\n}));\n\nconst parSecteur = entreprisesFormatees.reduce((acc, e) => {\n  const s = e.secteur || 'Non classé';\n  acc[s] = (acc[s] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'La Bonne Boite v2',\n    zone: 'Paris + 20km',\n    total_hits: totalHits,\n    nb_retournes: entreprisesFormatees.length,\n    nb_fort_potentiel: entreprisesFormatees.filter(e => e.fort_potentiel).length,\n    par_secteur: parSecteur,\n    top_20: entreprisesFormatees.slice(0, 20),\n    toutes: entreprisesFormatees\n  }\n}];"
+        "url": "https://api.apprentissage.beta.gouv.fr/api/formation/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "48.8566"
+            },
+            {
+              "name": "longitude",
+              "value": "2.3522"
+            },
+            {
+              "name": "radius",
+              "value": "30"
+            },
+            {
+              "name": "romes",
+              "value": "G1602,G1603,G1605,N1103,N1105,F1702,F1603,F1613,K2204,D1507,D1106,D1102,A1203,I1606,K1303,H2301,I1304"
+            },
+            {
+              "name": "page_size",
+              "value": "100"
+            },
+            {
+              "name": "page_index",
+              "value": "0"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer eyJhbGciOiJIUzI1NiJ9.eyJfaWQiOiI2OWNiZGZiYzI5YjNlMDJmN2NkYjU0YTMiLCJhcGlfa2V5IjoieXBkNi95WkhnVDhPK25vdUxTRkFlcTVoWTl2OWFWeHFWK2hhU3NkT0phTT0iLCJvcmdhbmlzYXRpb24iOm51bGwsImVtYWlsIjoibW91cmFkLnJlbWlsaUBsZXMtb21icmVzLmNvbSIsImlzcyI6ImFwaSIsImlhdCI6MTc3NDk2ODc3NiwiZXhwIjoxODA2NTA0Nzc2fQ.5iKGnjdiuBPfRMV6rGJ12jmCyNf3WcrdUJDTGQaZwkg"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "04fd9c6f-f845-4a3c-ac26-c33829b7394f",
-      "name": "⚙️ Formater Bonne Boite",
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "🎓 Chercher Formations IDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🎓 Formater les formations en apprentissage\n// ============================================\n\nconst data = $input.first().json;\nconst formations = data.data || [];\nconst pagination = data.pagination || {};\n\nconst formationsFormatees = formations.map(f => ({\n  cle_ministere: f.identifiant?.cle_ministere_educatif || '',\n  statut: f.statut?.catalogue || '',\n  // Certification\n  certification_connue: f.certification?.connue || false,\n  intitule_certification: f.certification?.valeur?.intitule_long || f.certification?.valeur?.intitule_court || '',\n  niveau_certification: f.certification?.valeur?.niveau?.libelle || '',\n  code_rncp: f.certification?.valeur?.rncp || '',\n  // Formateur\n  formateur_nom: f.formateur?.organisme?.raison_sociale || '',\n  formateur_siret: f.formateur?.organisme?.siret || '',\n  formateur_uai: f.formateur?.organisme?.uai || '',\n  formateur_connu: f.formateur?.connu || false,\n  // Responsable\n  responsable_nom: f.responsable?.organisme?.raison_sociale || '',\n  responsable_siret: f.responsable?.organisme?.siret || '',\n  // Lieu\n  ville: f.lieu?.adresse?.ville || '',\n  code_postal: f.lieu?.adresse?.code_postal || '',\n  adresse_complete: [f.lieu?.adresse?.numero, f.lieu?.adresse?.voie, f.lieu?.adresse?.code_postal, f.lieu?.adresse?.ville].filter(Boolean).join(' '),\n  siret_lieu: f.lieu?.siret || '',\n  uai_lieu: f.lieu?.uai || '',\n  // Contact\n  email: f.contact?.email || '',\n  telephone: f.contact?.telephone || '',\n  // Modalité\n  a_distance: f.modalite?.entierement_a_distance || false,\n  duree_indicative: f.modalite?.duree_indicative || 0,\n  annee_cycle: f.modalite?.annee_cycle || null,\n  // Contenu\n  objectif: (f.contenu_educatif?.objectif || '').substring(0, 300),\n  contenu: (f.contenu_educatif?.contenu || '').substring(0, 300),\n  // ONISEP\n  onisep_url: f.onisep?.url || '',\n  onisep_intitule: f.onisep?.intitule || '',\n  // Sessions\n  nb_sessions: (f.sessions || []).length,\n  prochaine_session: (f.sessions || []).length > 0 ? f.sessions[0].debut : '',\n  capacite: (f.sessions || []).length > 0 ? f.sessions[0].capacite : null\n}));\n\n// Stats\nconst parVille = formationsFormatees.reduce((acc, f) => {\n  const v = f.ville || 'Non précisé';\n  acc[v] = (acc[v] || 0) + 1;\n  return acc;\n}, {});\n\nconst parNiveau = formationsFormatees.reduce((acc, f) => {\n  const n = f.niveau_certification || 'Non précisé';\n  acc[n] = (acc[n] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    source: 'Formations Apprentissage',\n    zone: 'Paris + 30km',\n    nb_formations: formationsFormatees.length,\n    total_pages: pagination.page_count || 0,\n    page_actuelle: pagination.page_index || 0,\n    par_ville: parVille,\n    par_niveau: parNiveau,\n    formations: formationsFormatees\n  }\n}];"
+      },
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "name": "⚙️ Formater Formations",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         416,
-        128
+        320
       ]
     }
   ],
@@ -264,7 +270,12 @@
             "index": 0
           },
           {
-            "node": "🔐 Token Bonne Boite",
+            "node": "📋 Chercher Alternance IDF",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🎓 Chercher Formations IDF",
             "type": "main",
             "index": 0
           }
@@ -282,17 +293,6 @@
         ]
       ]
     },
-    "🔐 Token Bonne Boite": {
-      "main": [
-        [
-          {
-            "node": "🏢 Bonne Boite - Multi-secteurs Paris",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "📋 Chercher Offres IDF": {
       "main": [
         [
@@ -304,11 +304,22 @@
         ]
       ]
     },
-    "🏢 Bonne Boite - Multi-secteurs Paris": {
+    "📋 Chercher Alternance IDF": {
       "main": [
         [
           {
-            "node": "⚙️ Formater Bonne Boite",
+            "node": "⚙️ Formater Alternance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎓 Chercher Formations IDF": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Formater Formations",
             "type": "main",
             "index": 0
           }

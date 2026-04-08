@@ -1,0 +1,563 @@
+{
+  "name": "🤖 Koda - Assistant WhatsApp Jeunes v1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "koda-whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1dd598fe-f4d6-4d16-b5ff-d88c96714a6e",
+      "name": "Webhook Koda WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        -80
+      ],
+      "webhookId": "koda-whatsapp"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"received\"}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "7a7ca54e-b1ab-4525-a955-c93e55a921b2",
+      "name": "Répondre 200 à Meta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -32,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// 📱 KODA — Extraire infos du message WhatsApp entrant\n// Identique au pattern Stella, adapté pour Koda\n// ============================================================================\n\nconst body = $input.item.json.body;\n\nconst entry = body?.entry?.[0];\nconst changes = entry?.changes?.[0];\nconst value = changes?.value;\nconst messages = value?.messages;\n\n// Si pas de messages → status update (delivered, read, sent)\nif (!messages || messages.length === 0) {\n  return { json: { skip: true, body: '', from: '', phoneNumber: '', profileName: '', prenom: '', messageId: '', timestamp: '', phoneNumberId: '' } };\n}\n\nconst message = messages[0];\nconst contacts = value?.contacts?.[0];\n\nconst from = message.from;\nconst phoneNumber = '+' + from;\nconst profileName = contacts?.profile?.name || '';\nconst prenom = profileName ? profileName.split(' ')[0] : '';\nconst messageId = message.id;\nconst timestamp = message.timestamp;\n\nlet messageBody = '';\nif (message.type === 'text') {\n  messageBody = message.text?.body || '';\n} else if (message.type === 'button') {\n  messageBody = message.button?.text || '';\n} else if (message.type === 'interactive') {\n  messageBody = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '';\n} else if (message.type === 'image') {\n  messageBody = '[Image envoyée]';\n} else if (message.type === 'document') {\n  messageBody = '[Document envoyé]';\n} else if (message.type === 'audio') {\n  messageBody = '[Message vocal]';\n} else {\n  messageBody = `[Message de type ${message.type}]`;\n}\n\n// Phone Number ID Koda\nconst phoneNumberId = value?.metadata?.phone_number_id || '1107773802412902';\n\nreturn {\n  json: {\n    skip: false,\n    from,\n    phoneNumber,\n    profileName,\n    prenom,\n    body: messageBody,\n    messageId,\n    timestamp,\n    phoneNumberId\n  }\n};"
+      },
+      "id": "f9a61ebf-fa3f-40a9-b2a1-05435359ab5a",
+      "name": "Extraire infos WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.body }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2137f212-2fa0-426d-93fe-97cc7ef79997",
+      "name": "Filtrer status updates",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Chercher le jeune par numéro WA (format 33XXXXXXXXX)\nWITH lookup AS (\n  SELECT\n    j.airtable_id,\n    j.prenom,\n    j.secteur_vise,\n    j.ville,\n    j.departement,\n    j.classe,\n    j.niveau_francais_declare,\n    j.mna,\n    j.disponibilite,\n    j.besoins,\n    j.attentes_mentor,\n    j.codes_rome_suggeres,\n    j.genre,\n    j.resume_suivi,\n    j.telephone,\n    COALESCE(kas.current_stage, 'new') AS current_stage,\n    COALESCE(kos.step, 'not_started') AS onboarding_step,\n    COALESCE(kos.data_collected, '{}'::jsonb) AS data_collected,\n    kas.pending_matches,\n    kas.nb_matches_sent,\n    kas.nb_candidatures\n  FROM jeunes j\n  LEFT JOIN koda_agent_state kas ON kas.jeune_id = j.airtable_id\n  LEFT JOIN koda_onboarding_state kos ON kos.jeune_id = j.airtable_id\n  WHERE j.telephone_normalized = '{{ $json.from }}'\n     OR kas.wa_phone = '{{ $json.from }}'\n  LIMIT 1\n)\nSELECT * FROM lookup;\n",
+        "options": {}
+      },
+      "id": "f0969999-5e7c-4c44-b339-13555fba6b9d",
+      "name": "🔍 Chercher jeune dans Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        720,
+        -80
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// 🧠 KODA — Construire le contexte pour l'agent IA\n// Rassemble : infos WA + profil jeune + état onboarding + historique\n// ============================================================================\n\nconst waData = $('Extraire infos WhatsApp').item.json;\nconst lookupResults = $('🔍 Chercher jeune dans Supabase').all();\nconst jeune = lookupResults.length > 0 ? lookupResults[0].json : null;\n\nconst isKnown = !!jeune;\nconst prenom = jeune?.prenom || waData.prenom || waData.profileName?.split(' ')[0] || '';\nconst onboardingStep = jeune?.onboarding_step || 'not_started';\nconst currentStage = jeune?.current_stage || 'new';\nconst dataCollected = jeune?.data_collected || {};\n\n// Construire le contexte structuré pour l'agent\nlet context = '';\n\nif (!isKnown) {\n  context = `NOUVEAU CONTACT — Ce numéro (${waData.from}) n'est pas dans la base Supabase.\nLe profil WhatsApp s'appelle : ${waData.profileName || 'inconnu'}.\nC'est peut-être un jeune qu'on n'a pas encore enregistré, ou un numéro différent.\nDemande-lui son prénom et oriente-le. Si c'est un jeune accompagné par Les Ombres, dis-lui de te donner son prénom pour qu'on le retrouve.`;\n} else {\n  context = `JEUNE IDENTIFIÉ :\n- Prénom : ${prenom}\n- Airtable ID : ${jeune.airtable_id}\n- Secteur visé : ${jeune.secteur_vise || 'Non précisé'}\n- Ville/Département : ${jeune.ville || ''} ${jeune.departement || ''}\n- Classe : ${jeune.classe || 'Non précisé'}\n- Français : ${jeune.niveau_francais_declare || 'Non précisé'}\n- MNA : ${jeune.mna ? 'Oui' : 'Non'}\n- Disponibilité : ${jeune.disponibilite || 'Non précisée'}\n- Besoins exprimés : ${jeune.besoins || 'Non précisés'}\n- Attentes mentor : ${jeune.attentes_mentor || 'Non précisées'}\n- Codes ROME : ${jeune.codes_rome_suggeres || 'Non définis'}\n\nÉTAT AGENT : ${currentStage}\nONBOARDING : étape \"${onboardingStep}\"\n\nNOTES DU MENTOR (resume_suivi — ces infos sont FIABLES, utilise-les) :\n${jeune.resume_suivi || 'Aucune note disponible'}\n`;\n\n  // Données déjà collectées pendant l'onboarding\n  if (Object.keys(dataCollected).length > 0) {\n    context += `\\nDonnées déjà collectées pendant l'onboarding :\\n`;\n    for (const [k, v] of Object.entries(dataCollected)) {\n      context += `- ${k}: ${v}\\n`;\n    }\n  }\n\n  // Matchs en attente\n  if (jeune.pending_matches && Array.isArray(jeune.pending_matches) && jeune.pending_matches.length > 0) {\n    context += `\\nMATCHS EN ATTENTE (${jeune.pending_matches.length}) :\\n`;\n    jeune.pending_matches.forEach((m, i) => {\n      context += `${i+1}. ${m.titre} chez ${m.entreprise} (${m.lieu}) — Score: ${m.score}\\n`;\n    });\n  }\n\n  // Instructions selon l'étape d'onboarding\n  if (onboardingStep === 'not_started' || onboardingStep === 'welcome') {\n    context += `\\nINSTRUCTION : C'est le premier échange avec ce jeune. Présente-toi et lance l'onboarding : demande-lui ce qu'il cherche comme travail.`;\n  } else if (onboardingStep === 'job_type' || onboardingStep === 'job_type_confirm') {\n    context += `\\nINSTRUCTION : On attend que le jeune précise son secteur/métier recherché. Analyse sa réponse et passe à la question de localisation.`;\n  } else if (onboardingStep === 'location' || onboardingStep === 'location_confirm') {\n    context += `\\nINSTRUCTION : On attend la localisation. Puis demande le type de contrat recherché (CDI/CDD, alternance, stage, tout).`;\n  } else if (onboardingStep === 'contract_type') {\n    context += `\\nINSTRUCTION : On attend le type de contrat. Puis demande s'il a un CV.`;\n  } else if (onboardingStep === 'cv_check') {\n    context += `\\nINSTRUCTION : On attend de savoir s'il a un CV. Si oui, super. Si non, dis-lui qu'on peut l'aider à en créer un. Puis fais un récap de tout ce qu'on sait et dis-lui que tu lances les recherches.`;\n  } else if (onboardingStep === 'ready') {\n    context += `\\nINSTRUCTION : L'onboarding est terminé. Le jeune est en mode normal. Réponds à sa question, propose des offres si tu en as, aide-le sur ses candidatures.`;\n  }\n}\n\n// Ajouter l'airtable_id en fin de contexte pour que l'agent puisse le passer au tool\nif (isKnown) {\n  context += `\\n\\nIDENTIFIANT INTERNE : ${jeune.airtable_id}`;\n  context += `\\nQuand tu appelles search_job_offers, passe exactement cet identifiant : ${jeune.airtable_id}`;\n}\n\nreturn {\n  json: {\n    ...waData,\n    isKnown,\n    jeuneId: jeune?.airtable_id || null,\n    jeunePrenom: prenom,\n    onboardingStep,\n    currentStage,\n    context\n  }\n};"
+      },
+      "id": "3dfefd59-1b32-4afa-adce-e78b88371609",
+      "name": "🧠 Construire contexte Koda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.context }}\n\n---\nMessage du jeune :\n{{ $json.body }}",
+        "options": {
+          "systemMessage": "Tu es Koda, l'assistant emploi de l'association Les Ombres. Tu parles sur WhatsApp avec un jeune de 16-25 ans que tu aides à trouver du boulot ou une alternance.\n\nTON STYLE :\n- Tu tutoies toujours\n- Messages courts : max 3-4 phrases par bulle\n- Pas de jargon RH, pas de mots compliqués\n- Tu es encourageant mais pas niais. Tu parles comme un grand frère ou une grande soeur qui s'y connait en emploi\n- Tu utilises quelques emojis mais sans en abuser (1-2 par message)\n- Tu ne poses qu'UNE question à la fois\n- Tu t'adaptes au niveau de français du jeune\n- JAMAIS de markdown avec astérisques ou gras ou listes à puces\n- JAMAIS de signature à la fin\n- Pas de \"Bonjour [prénom]\" — commence directement par le contenu\n\nTON RÔLE :\n- Tu connais le marché de l'emploi, les codes, les pièges\n- Tu sais que chercher un job c'est stressant, surtout quand on a pas de réseau\n- Tu es là pour simplifier, pas pour ajouter de la complexité\n- Quand tu proposes une offre, tu expliques en UNE phrase pourquoi elle colle au profil\n- Tu ne juges jamais. Pas de moral, pas de leçon\n- Si le jeune ne répond pas, tu ne harcèles pas\n\nONBOARDING :\nSi le jeune n'a pas encore été onboardé (étape not_started ou welcome), présente-toi brièvement puis lance l'onboarding. Tu dois collecter :\n1. Le secteur/métier recherché\n2. La localisation (ville ou département)\n3. Le type de contrat (CDI/CDD, alternance, stage, tout)\n4. S'il a un CV ou pas\nPose UNE question à la fois, pas tout d'un coup. Si tu connais déjà une info (indiquée dans le contexte), confirme-la au lieu de redemander.\n\nAPRÈS ONBOARDING :\n- Tu proposes des offres quand tu en as\n- Tu aides à rédiger des candidatures\n- Tu prépares aux entretiens\n- Tu réponds à toute question sur l'emploi, les formations, les démarches\n\nCE QUE TU NE FAIS JAMAIS :\n- Tu ne révèles jamais le statut ASE/MNA du jeune\n- Tu ne partages pas les données du jeune sans son accord\n- Tu ne forces jamais une candidature\n- Tu ne mens pas sur les offres\n- Tu ne remplaces pas le mentor — tu le complètes\n\nRéponds directement, format WhatsApp.\n\nOUTILS DISPONIBLES :\nTu as accès à un outil :\n\n1. search_job_offers : Cherche des offres d'emploi en temps réel sur France Travail et La Bonne Alternance. Utilise cet outil quand :\n   - L'onboarding est terminé et tu veux proposer des premières offres\n   - Le jeune demande des offres, du boulot, des opportunités\n   - Le jeune dit \"propose-moi\", \"cherche\", \"trouve\", \"offres\", etc.\n   NE PAS utiliser si l'onboarding n'est pas terminé (étape != ready).\n\nQuand tu utilises search_job_offers, tu recevras une liste d'offres brutes. Sélectionne les 3-5 meilleures et présente-les de manière naturelle au jeune, avec les liens. Format WhatsApp : pas de markdown, pas de listes à puces, juste du texte naturel avec les liens.\n\n\n\nCRÉATION DE CV :\n\nQuand le jeune demande un CV, tu suis ce protocole EXACT :\n\nÉTAPE 1 — OUVERTURE PERSONNALISÉE (1 seul message) :\n- Commence par son PRÉNOM : \"Salut [prénom] !\"\n- Mentionne son OBJECTIF : \"pour ton [stage/alternance/CDI] en [secteur]\"\n- MONTRE ce que tu sais déjà de lui (cherche dans le contexte) :\n  \"J'ai déjà pas mal d'infos : ton [expérience du resume_suivi], ton [formation], tes langues\"\n- Dis ce qui MANQUE : \"Il me manque juste 2-3 trucs\"\n- Pose UNE question ciblée sur ce qui manque vraiment\n\nExemples d'ouverture :\n- \"Salut Imoran ! On va te préparer un CV pour ton stage de juin en logistique. Je sais que tu as fait un mois à Bondy en janvier et que tu es en CAP. Il me manque juste le nom de l'entreprise à Bondy et ton email.\"\n- \"Salut Saliou ! Pour ton alternance en commerce, j'ai vu que tu as 4 ans d'expérience au marché au Sénégal, c'est top ! J'ai besoin de ton email et de tes langues.\"\n- \"Salut Karifa ! Je vais te préparer un CV pour trouver un patron pour ton BAC PRO. Je sais que tu parles soussou et malinké. T'as déjà travaillé, même au pays ?\"\n\nNE FAIS JAMAIS :\n- \"T'as déjà travaillé ?\" quand le resume_suivi mentionne des expériences\n- Oublier le prénom\n- Poser une question générique quand tu as des infos spécifiques\n\nÉTAPE 2 — COLLECTE (1-2 questions max) :\n- Ne redemande JAMAIS ce qui est dans le contexte\n- Creuse les détails manquants : \"C'était chez quelle entreprise ?\" \"Combien de temps ?\"\n- Si le jeune dit \"rien\" → question de déblocage : \"Et au quotidien, cuisine, ménage, sport ?\"\n- Quand tu as au moins 1 expérience + email → passe à l'étape 3\n\nÉTAPE 3 — RÉCAP + LANCEMENT :\nFais un récap clair :\n\"Voilà ce que je mets dans ton CV :\n- Titre : [titre]\n- Expérience : [expériences]\n- Formation : [formation]\n- Langues : [langues]\nC'est bon ? Je lance !\"\n\nQuand le jeune confirme, dis EXACTEMENT cette phrase :\n\"Je prépare ton CV, je te l'envoie dans quelques secondes...\"\n\nCette phrase déclenche la génération automatique par le système.\nTu ne connais PAS le score. Tu ne GÉNÈRES PAS le CV toi-même.",
+          "maxIterations": 5
+        }
+      },
+      "id": "f9cd2afc-2977-4ecf-87d2-22599dfe8d2d",
+      "name": "🤖 Agent Koda",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1216,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "model": "=claude-haiku-4-5-20251001",
+        "options": {
+          "temperature": 0.6
+        }
+      },
+      "id": "328d5af4-5178-40ce-b700-31a0ce5316c8",
+      "name": "Claude Haiku (Koda)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [
+        1216,
+        176
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "HFeESTzyv2dX2PlD",
+          "name": "Claude LO _ Q&A Bénévoles"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Extraire infos WhatsApp').item.json.from }}",
+        "contextWindowLength": 25
+      },
+      "id": "c2e4e502-6b93-4673-8dbc-0502ce436e54",
+      "name": "Mémoire Conversation Koda",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1424,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// 📤 KODA — Assembler réponse + Logger dans Supabase\n// ============================================================================\n\nconst input = $input.item.json;\nconst waData = $('🧠 Construire contexte Koda').item.json;\n\nlet reponseIA = '';\ntry {\n  reponseIA = input.output || input.text || '';\n} catch (e) {\n  reponseIA = \"Merci pour ton message ! Je reviens vers toi très vite.\";\n}\n\n// Nettoyer\nreponseIA = reponseIA\n  .replace(/^(Bonjour|Salut|Hello|Hey|Coucou)\\s+\\w+[,!]?\\s*/i, '')\n  .replace(/\\n*(Cordialement|À bientôt|Koda|Assistant)[^\\n]*$/gi, '')\n  .replace(/\\*\\*/g, '')\n  .replace(/\\*/g, '')\n  .trim();\n\n// Construire les SQL de logging\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  return \"'\" + String(v).replace(/'/g, \"''\").substring(0, 5000) + \"'\";\n};\nconst now = new Date().toISOString();\nconst jeuneId = waData.jeuneId;\n\nlet sqlStatements = [];\n\nif (jeuneId) {\n  // Log message entrant\n  sqlStatements.push(`INSERT INTO koda_conversations (jeune_id, direction, sender, message_text, message_type, wa_message_id, metadata) VALUES (${esc(jeuneId)}, 'in', 'jeune', ${esc(waData.body)}, 'text', ${esc(waData.messageId)}, '{\"wa_phone\":\"${waData.from}\"}'::jsonb) ON CONFLICT (wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING;`);\n\n  // Log message sortant\n  sqlStatements.push(`INSERT INTO koda_conversations (jeune_id, direction, sender, message_text, message_type) VALUES (${esc(jeuneId)}, 'out', 'koda', ${esc(reponseIA)}, 'text');`);\n\n  // Memory stream\n  sqlStatements.push(`INSERT INTO koda_memory_stream (jeune_id, event_type, source, content, metadata, importance) VALUES (${esc(jeuneId)}, 'message_in', 'jeune', ${esc(waData.body)}, '{\"wa_phone\":\"${waData.from}\",\"onboarding_step\":\"${waData.onboardingStep}\"}'::jsonb, 3);`);\n\n  // Mettre à jour agent state\n  sqlStatements.push(`UPDATE koda_agent_state SET last_message_at = '${now}', last_reply_at = '${now}', wa_phone = '${waData.from}', updated_at = '${now}' WHERE jeune_id = ${esc(jeuneId)};`);\n\n  // Avancement onboarding\n  const step = waData.onboardingStep;\n  let newStep = step;\n  if (step === 'not_started' || step === 'welcome') newStep = 'job_type';\n  else if (step === 'job_type' || step === 'job_type_confirm') newStep = 'location';\n  else if (step === 'location' || step === 'location_confirm') newStep = 'contract_type';\n  else if (step === 'contract_type') newStep = 'cv_check';\n  else if (step === 'cv_check') newStep = 'ready';\n\n  if (newStep !== step) {\n    let dataKey = '';\n    if (step === 'job_type' || step === 'job_type_confirm') dataKey = 'secteur_stated';\n    else if (step === 'location' || step === 'location_confirm') dataKey = 'location_stated';\n    else if (step === 'contract_type') dataKey = 'contract_type';\n    else if (step === 'cv_check') dataKey = 'has_cv';\n\n    const dataUpdate = dataKey ? `data_collected = data_collected || '{\"${dataKey}\":${esc(waData.body)}}'::jsonb,` : '';\n    sqlStatements.push(`UPDATE koda_onboarding_state SET step = '${newStep}', ${dataUpdate} ${newStep === 'ready' ? \"completed_at = '\" + now + \"',\" : ''} started_at = COALESCE(started_at, '${now}'), updated_at = '${now}' WHERE jeune_id = ${esc(jeuneId)};`);\n  }\n}\n\nreturn {\n  json: {\n    to: waData.from,\n    messageWhatsApp: reponseIA,\n    phoneNumber: waData.phoneNumber,\n    profileName: waData.profileName,\n    phoneNumberId: waData.phoneNumberId,\n    jeuneId: jeuneId,\n    sqlStatements: sqlStatements.join('\\n')\n  }\n};"
+      },
+      "id": "fdcfc530-dcc3-49c8-8c7d-1bbdc9d9bd01",
+      "name": "📤 Assembler réponse + Logger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sqlStatements }}",
+        "options": {}
+      },
+      "id": "49bd5fd7-b4f8-418c-8377-d7e8388a9a09",
+      "name": "💾 Logger dans Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1824,
+        -80
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/{{ $('📤 Assembler réponse + Logger').item.json.phoneNumberId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('📤 Assembler réponse + Logger').item.json.to }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($('📤 Assembler réponse + Logger').item.json.messageWhatsApp) }}\n  }\n}",
+        "options": {}
+      },
+      "id": "8cb1fc5f-6447-4867-b212-d42404ba5ed8",
+      "name": "📱 Envoyer via WhatsApp API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2064,
+        -80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hhYZ0INRxDuqd9Sm",
+          "name": "WA Koda"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "search_job_offers",
+        "description": "Cherche des offres d'emploi et d'alternance pour le jeune. Appelle les APIs France Travail et La Bonne Alternance en temps réel avec le scoring intelligent. Passe l'identifiant interne du jeune (ex: TEST_MOURAD_001) comme paramètre.",
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        }
+      },
+      "id": "koda-tool-wf-search-001",
+      "name": "🔍 Tool: Chercher offres",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 🔍 Détecter si un CV doit être généré\n// Vérifie : conversation parle de CV + email collecté\n// ============================================================\n\nconst waData = $('🧠 Construire contexte Koda').item.json;\nconst agentResponse = $('📤 Assembler réponse + Logger').item.json;\nconst recentMessages = (waData.body || '').toLowerCase();\nconst agentText = (agentResponse.messageWhatsApp || '').toLowerCase();\nconst jeuneId = waData.jeuneId;\n\n// Détecter si l'agent a fini la collecte CV\nconst agentSaysReady = agentText.includes('je prépare ton cv') \n  || agentText.includes(\"j'ai tout ce qu'il faut\")\n  || agentText.includes('je te l\\'envoie');\n\n// Détecter si le contexte parle de CV\nconst cvTopicInConversation = recentMessages.includes('cv') \n  || recentMessages.includes('curriculum');\n\nconst shouldGenerateCV = agentSaysReady && jeuneId;\n\nreturn [{\n  json: {\n    ...agentResponse,\n    shouldGenerateCV,\n    jeuneId: jeuneId,\n    wa_phone: waData.from,\n    phoneNumberId: waData.phoneNumberId,\n    // Passer tout le contexte de la conversation pour le CV\n    cvContext: shouldGenerateCV ? (waData.context || '') : ''\n  }\n}];"
+      },
+      "id": "koda-cv-detect",
+      "name": "🔍 Détecter CV à générer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.shouldGenerateCV }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "koda-cv-filter",
+      "name": "🔀 CV à générer ?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        2850,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer les données pour le sous-workflow CV\nconst data = $('🔍 Détecter CV à générer').first().json;\n\n// Le sous-workflow attend { query: \"airtable_id | contexte\" }\n// On passe l'ID + toute la conversation comme contexte\nconst conversations = $('🧠 Construire contexte Koda').item.json.context || '';\n\nreturn [{ json: { \n  query: data.jeuneId + ' | ' + conversations.substring(0, 2000)\n} }];"
+      },
+      "id": "koda-cv-prep",
+      "name": "📦 Préparer données CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/{{ $('🔍 Détecter CV à générer').first().json.phoneNumberId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  messaging_product: 'whatsapp',\n  to: $('🔍 Détecter CV à générer').first().json.wa_phone,\n  type: 'text',\n  text: {\n    body: (() => {\n      const cv = $json.cv_json || {};\n      const score = $json.koda_score || {};\n      const url = $json.cv_url || '';\n      \n      let msg = 'Ton CV est pret ! Score Koda : ' + (score.total || '?') + '/100 \\n\\n';\n      if (cv.titre) msg += 'Titre : ' + cv.titre + '\\n';\n      if (cv.experiences && cv.experiences.length > 0) {\n        msg += '\\nExperiences :\\n';\n        cv.experiences.forEach(e => { msg += '- ' + (e.poste || '') + ' (' + (e.dates || '') + ')\\n'; });\n      }\n      if (cv.formations && cv.formations.length > 0) {\n        msg += '\\nFormation :\\n';\n        cv.formations.forEach(f => { msg += '- ' + (f.diplome || '') + '\\n'; });\n      }\n      if (score.top_improvement) msg += '\\nConseil : ' + score.top_improvement + '\\n';\n      if (url) msg += '\\nTon CV en ligne : ' + url;\n      msg += '\\n\\nC est bon ou tu veux changer quelque chose ?';\n      return msg;\n    })()\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "koda-cv-send",
+      "name": "📱 Envoyer CV par WA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3600,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hhYZ0INRxDuqd9Sm",
+          "name": "WA Koda"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "each",
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "options": {}
+      },
+      "id": "koda-cv-exec-001",
+      "name": "📄 Exécuter CV Builder",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3350,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Koda WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Répondre 200 à Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Répondre 200 à Meta": {
+      "main": [
+        [
+          {
+            "node": "Extraire infos WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire infos WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Filtrer status updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrer status updates": {
+      "main": [
+        [
+          {
+            "node": "🔍 Chercher jeune dans Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Chercher jeune dans Supabase": {
+      "main": [
+        [
+          {
+            "node": "🧠 Construire contexte Koda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Construire contexte Koda": {
+      "main": [
+        [
+          {
+            "node": "🤖 Agent Koda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Agent Koda": {
+      "main": [
+        [
+          {
+            "node": "📤 Assembler réponse + Logger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Assembler réponse + Logger": {
+      "main": [
+        [
+          {
+            "node": "💾 Logger dans Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Logger dans Supabase": {
+      "main": [
+        [
+          {
+            "node": "📱 Envoyer via WhatsApp API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Haiku (Koda)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 Agent Koda",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mémoire Conversation Koda": {
+      "ai_memory": [
+        [
+          {
+            "node": "🤖 Agent Koda",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Tool: Chercher offres": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Agent Koda",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📱 Envoyer via WhatsApp API": {
+      "main": [
+        [
+          {
+            "node": "🔍 Détecter CV à générer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Détecter CV à générer": {
+      "main": [
+        [
+          {
+            "node": "🔀 CV à générer ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 CV à générer ?": {
+      "main": [
+        [
+          {
+            "node": "📦 Préparer données CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Préparer données CV": {
+      "main": [
+        [
+          {
+            "node": "📄 Exécuter CV Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📄 Exécuter CV Builder": {
+      "main": [
+        [
+          {
+            "node": "📱 Envoyer CV par WA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cc1894f8-6bad-45b4-9264-54542648cdd6",
+  "meta": {
+    "instanceId": "cadbaef72f33bff1eacd1337b3bcd83c94a890e0f3bd8e6c900dfd98ca78d63e"
+  },
+  "id": "r3Hwb7QgBovmjr8S",
+  "tags": []
+}

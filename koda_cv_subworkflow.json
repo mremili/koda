@@ -1,0 +1,407 @@
+{
+  "name": "📄 Koda - CV Builder v2 (sous-workflow)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{ \"query\": \"TEST_MOURAD_001\" }"
+      },
+      "id": "cv-trigger",
+      "name": "⚡ Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet fullInput = '';\nif (raw.query && typeof raw.query === 'string') fullInput = raw.query.trim();\nelse if (raw.chatInput && typeof raw.chatInput === 'string') fullInput = raw.chatInput.trim();\nelse if (raw.airtable_id) fullInput = raw.airtable_id.trim();\nelse {\n  for (const [k, v] of Object.entries(raw)) {\n    if (typeof v === 'string' && v.length > 3) { fullInput = v.trim(); break; }\n  }\n}\nconst idMatch = fullInput.match(/(rec[A-Za-z0-9]+|TEST_[A-Za-z0-9_]+)/);\nconst airtableId = idMatch ? idMatch[1] : '';\nconst extraContext = fullInput.replace(airtableId, '').replace(/^\\s*\\|\\s*/, '').trim();\nreturn [{ json: { airtable_id: airtableId, extra_context: extraContext, has_id: airtableId.length > 0 } }];"
+      },
+      "id": "cv-parse",
+      "name": "🔧 Parser input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT j.airtable_id, j.prenom, j.nom, j.telephone, j.email, j.ville, j.departement, j.classe, j.secteur_vise, j.niveau_francais_declare, j.mna, j.disponibilite, j.besoins, j.attentes_mentor, j.genre, j.resume_suivi, j.structure, j.age_inscription, COALESCE((SELECT STRING_AGG(DISTINCT sk.skill_name, ', ') FROM koda_inference_skills sk WHERE (sk.source_type = 'classe' AND sk.source_value = j.classe) OR (sk.source_type = 'secteur' AND sk.source_value = j.secteur_vise) OR (sk.source_type = 'situation' AND sk.source_value = 'MNA' AND j.mna = true)), '') AS skills_inferees, COALESCE((SELECT STRING_AGG(sub.message_text, ' | ') FROM (SELECT message_text FROM koda_conversations WHERE jeune_id = j.airtable_id AND direction = 'in' ORDER BY sent_at DESC LIMIT 20) sub), '') AS conversations_recentes FROM jeunes j WHERE j.airtable_id = '{{ $(\"🔧 Parser input\").first().json.airtable_id }}' LIMIT 1;",
+        "options": {}
+      },
+      "id": "cv-profil",
+      "name": "📋 Charger profil complet",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        400,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "2raQuLNZ5pOeUkJC",
+          "name": "Postgres LO_BIA"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $('📋 Charger profil complet').first().json;\nconst extra = $('🔧 Parser input').first().json.extra_context || '';\n\nif (!j || !j.airtable_id) {\n  return [{ json: { skip: true, error: 'Profil non trouvé' } }];\n}\n\nconst systemPrompt = `Tu es un expert en création de CV pour jeunes en insertion professionnelle (16-25 ans).\n\nTu travailles en 2 PHASES :\n\n═══ PHASE 1 : COLLECTE (si pas assez de matière) ═══\n\nAnalyse TOUT ce que tu reçois (profil, notes mentor, conversations, contexte additionnel).\nIdentifie ce qui est CONNU vs ce qui MANQUE.\n\nINSIGHT CLÉ : les MISSIONS de chaque expérience sont INFÉRABLES.\n\"Stage boulangerie 2 semaines\" → tu SAIS que ça implique pétrissage, façonnage, hygiène, mise en rayon.\nTu n'as PAS besoin de demander les missions au jeune. Tu as juste besoin du TITRE + LIEU + DURÉE.\n\nCritères minimum pour passer en Phase 2 :\n- Au moins 1 expérience identifiée (même informelle, même \"ménage au foyer\")\n- Langues connues\n- Email connu ou confirmé absent\nSi ces critères sont remplis → Phase 2. Sinon → pose UNE question.\n\nQuestions de déblocage (pas \"as-tu une expérience\" mais) :\n- \"T'as déjà fait un stage, même en 3ème ? Ou aidé quelqu'un, même gratuitement ?\"\n- \"Au [pays d'origine], tu faisais quoi comme activité ?\"\n- \"Au quotidien, tu fais des trucs utiles ? Cuisine, ménage, traduction, sport ?\"\n\nRéponds en JSON :\n{\"phase\":\"collect\",\"data_found\":{\"experiences\":[],\"langues\":[],\"formations\":[],\"email\":\"\"},\"missing\":[\"...\"],\"next_question\":\"...\",\"question_context\":\"...\"}\n\n═══ PHASE 2 : GÉNÉRATION + ÉVALUATION ═══\n\nGénère un CV PROFESSIONNEL avec ces règles :\n\nEXPÉRIENCES — structure par CATÉGORIES DE MISSIONS :\n- Restauration : \"Service : accueil, prise de commandes ; Préparation : mise en place, aide cuisine ; Hygiène : nettoyage, normes HACCP\"\n- BTP : \"Travaux : pose, enduit, carrelage ; Sécurité : port EPI, balisage ; Manutention : transport matériaux\"\n- Commerce : \"Vente : conseil client, encaissement ; Gestion : réassort, inventaire ; Relation client : accueil, fidélisation\"\n- Logistique : \"Préparation : picking, colisage ; Manutention : chariot, transpalette ; Organisation : gestion stock, traçabilité\"\n- Informatique : \"Développement : conception, codage, tests ; Outils : [langages] ; Méthode : travail en équipe, gestion de version\"\n- ADAPTE les catégories au métier réel. INFÈRE les missions du titre du poste.\n\nCOMPÉTENCES en 3-4 catégories :\n- Savoir-faire : compétences techniques SPÉCIFIQUES au secteur (pas \"bureautique\")\n- Compétences humaines : avec PREUVES indirectes (pas juste \"rigoureux\")\n- Compétences linguistiques : \"Langue (niveau)\" — pas de pourcentages\n- (optionnel) Compétences techniques : outils, logiciels, certifications\n\nRÈGLES :\n- JAMAIS mentionner ASE, MNA, foyer, placement, MLDS, dispositif\n- JAMAIS inventer une expérience\n- \"Arrivé en France\" N'EST PAS une expérience\n- UPE2A → \"Parcours de Français Langue Étrangère\"\n- Adresse = ville seule\n- Pas de date naissance, pas de photo\n- Accroche PERSONNALISÉE (pas \"Jeune et motivé, je souhaite...\")\n- \"Ménage au foyer\" → \"Entretien des espaces collectifs — Hébergement collectif\"\n- \"Pêche en mer\" → \"Pêcheur artisanal\" avec catégories missions\n\nKODA SCORE — évalue ton propre CV sur 100 :\n- FORMAT (25) : titre ciblé, accroche perso, 1 page, email pro\n- CONTENU (25) : ≥1 exp avec missions, formations datées, compétences techniques\n- MOTS-CLÉS (25) : correspondance secteur, verbes d'action, compétences métier\n- IMPACT (25) : missions orientées résultat, soft skills avec preuves, cohérence\n\nSi ton score < 70, AMÉLIORE le CV toi-même avant de le retourner.\nBoucle jusqu'à score ≥ 70.\n\nRéponds en JSON :\n{\"phase\":\"generate\",\"prenom_nom\":\"...\",\"telephone\":\"...\",\"email\":\"...\",\"ville\":\"...\",\"titre\":\"...\",\"profil\":\"...\",\"experiences\":[{\"poste\":\"...\",\"lieu\":\"...\",\"dates\":\"...\",\"categories\":[{\"nom\":\"...\",\"detail\":\"...\"}]}],\"formations\":[{\"diplome\":\"...\",\"lieu\":\"...\",\"dates\":\"...\",\"detail\":\"...\"}],\"competences\":[{\"categorie\":\"...\",\"detail\":\"...\"}],\"centres_interet\":\"...\",\"koda_score\":{\"total\":0,\"format\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"contenu\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"mots_cles\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"impact\":{\"score\":0,\"max\":25,\"feedback\":\"...\"},\"top_improvement\":\"...\"}}`;\n\nconst userPrompt = `DONNÉES DU JEUNE :\n\nIdentité : ${j.prenom || ''} ${j.nom || ''} | ${j.ville || ''} (${j.departement || ''}) | Tel: ${j.telephone || ''} | Email: ${j.email || 'non renseigné'} | Genre: ${j.genre || ''}\n\nFormation : ${j.classe || 'non précisée'} | Secteur visé : ${j.secteur_vise || 'non précisé'}\nMNA : ${j.mna ? 'Oui (NE PAS mentionner)' : 'Non'} | Français : ${j.niveau_francais_declare || '?'} | Dispo : ${j.disponibilite || '?'}\nBesoins : ${j.besoins || ''} | Attentes : ${(j.attentes_mentor || '').substring(0, 800)}\n\nSkills IA : ${j.skills_inferees || 'Aucune'}\n\nNotes mentor (resume_suivi) :\n${(j.resume_suivi || 'Aucune').substring(0, 2000)}\n\nConversations WA :\n${(j.conversations_recentes || 'Aucune').substring(0, 1500)}\n\nCONTEXTE ADDITIONNEL (infos collectées par l'agent dans la conversation CV) :\n${extra || 'Aucun — premier appel'}\n\nDécide : Phase 1 (poser une question) ou Phase 2 (générer le CV).\\n\\nIMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide. Pas de texte avant, pas de texte après, pas de markdown. Juste le JSON brut commençant par { et finissant par }.`;\n\nreturn [{ json: { systemPrompt, userPrompt, jeune: j } }];"
+      },
+      "id": "cv-prompt",
+      "name": "📝 Construire prompt CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "=COLLER_VOTRE_CLE_ANTHROPIC_ICI"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4096,system:$json.systemPrompt,messages:[{role:'user',content:$json.userPrompt}]}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "cv-sonnet",
+      "name": "🧠 Claude Sonnet (CV)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        850,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sonnetResp = $('🧠 Claude Sonnet (CV)').first().json;\nlet result = {};\ntry {\n  const text = sonnetResp.content?.[0]?.text || '{}';\n  // Nettoyer : enlever markdown, texte avant/après le JSON\n  let cleaned = text.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const firstBrace = cleaned.indexOf('{');\n  const lastBrace = cleaned.lastIndexOf('}');\n  if (firstBrace >= 0 && lastBrace > firstBrace) cleaned = cleaned.substring(firstBrace, lastBrace + 1);\n  result = JSON.parse(text.replace(/```json\\n?/g,'').replace(/```\\n?/g,'').trim());\n} catch(e) {\n  return [{ json: { response: 'Erreur analyse CV: ' + e.message, phase: 'error', needs_critique: false } }];\n}\n\n// === PHASE COLLECT ===\nif (result.phase === 'collect') {\n  let resp = 'PHASE COLLECTE\\n\\n';\n  resp += 'Trouvé : ' + JSON.stringify(result.data_found || {}) + '\\n';\n  resp += 'Manque : ' + (result.missing || []).join(', ') + '\\n\\n';\n  resp += 'QUESTION À POSER (telle quelle) :\\n' + (result.next_question || '') + '\\n\\n';\n  resp += 'Quand le jeune répond, rappelle build_cv avec ID + résumé cumulatif.';\n  return [{ json: { response: resp, phase: 'collect', needs_critique: false } }];\n}\n\n// === PHASE GENERATE ===\nconst score = result.koda_score?.total || 0;\n\nif (score < 70) {\n  // Needs improvement — build critique prompt for Haiku\n  const critiquePrompt = `Ce CV a obtenu un score de ${score}/100. Voici les feedbacks :\nFORMAT (${result.koda_score?.format?.score}/25) : ${result.koda_score?.format?.feedback}\nCONTENU (${result.koda_score?.contenu?.score}/25) : ${result.koda_score?.contenu?.feedback}\nMOTS-CLÉS (${result.koda_score?.mots_cles?.score}/25) : ${result.koda_score?.mots_cles?.feedback}\nIMPACT (${result.koda_score?.impact?.score}/25) : ${result.koda_score?.impact?.feedback}\n\nAmélioration prioritaire : ${result.koda_score?.top_improvement}\n\nCV actuel en JSON :\n${JSON.stringify(result, null, 2).substring(0, 3000)}\n\nAMÉLIORE ce CV en appliquant les feedbacks. Retourne le CV complet en JSON amélioré (même structure), avec un nouveau koda_score.`;\n\n  return [{ json: {\n    phase: 'generate',\n    needs_critique: true,\n    cv_json: result,\n    koda_score: result.koda_score,\n    critique_system: 'Tu es un expert CV. Améliore ce CV junior en appliquant les critiques. Garde la même structure JSON. Ne mens pas, ne fabrique rien. Valorise mieux ce qui existe.',\n    critique_prompt: critiquePrompt\n  } }];\n}\n\n// Score >= 70 — CV is good enough\nreturn [{ json: {\n  phase: 'generate',\n  needs_critique: false,\n  cv_json: result,\n  koda_score: result.koda_score\n} }];"
+      },
+      "id": "cv-eval",
+      "name": "🔍 Évaluer et Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "=COLLER_VOTRE_CLE_ANTHROPIC_ICI"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.needs_critique ? JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2048,system:$json.critique_system||'Passthrough',messages:[{role:'user',content:$json.critique_prompt||'No critique needed'}]}) : JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'ok'}]}) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "cv-haiku",
+      "name": "🧠 Haiku Critique",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1350,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const evalData = $('🔍 Évaluer et Router').first().json;\n\n// If collect phase, just return the question\nif (evalData.phase === 'collect' || evalData.phase === 'error') {\n  return [{ json: { response: evalData.response, phase: evalData.phase } }];\n}\n\n// Get the CV — either improved by Haiku or original from Sonnet\nlet cv = evalData.cv_json;\nlet score = evalData.koda_score;\n\nif (evalData.needs_critique) {\n  try {\n    const haikuResp = $('🧠 Haiku Critique').first().json;\n    const text = haikuResp.content?.[0]?.text || '';\n    const improved = JSON.parse(text.replace(/```json\\n?/g,'').replace(/```\\n?/g,'').trim());\n    if (improved.prenom_nom) {\n      cv = improved;\n      score = improved.koda_score || score;\n    }\n  } catch(e) { /* keep original */ }\n}\n\n// Build HTML\nlet h = '<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"><style>';\nh += '@page{size:A4;margin:0}*{margin:0;padding:0;box-sizing:border-box}';\nh += 'body{font-family:Georgia,\"Times New Roman\",serif;font-size:10.5pt;line-height:1.4;color:#1a1a1a;width:210mm;min-height:297mm;padding:18mm 20mm 15mm 20mm}';\nh += '.hdr{text-align:center;margin-bottom:6mm}.hdr h1{font-size:22pt;font-weight:bold;letter-spacing:1.5px;margin-bottom:2mm}';\nh += '.hdr .ct{font-size:9.5pt;color:#444;line-height:1.6}.hdr .ct a{color:#1a5276;text-decoration:none}';\nh += '.hdr .tt{font-size:11pt;font-style:italic;color:#1a5276;margin-top:3mm}';\nh += '.st{text-align:center;font-size:11pt;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-top:5mm;margin-bottom:3mm;border-top:1px solid #1a1a1a;border-bottom:1px solid #1a1a1a;padding:1.5mm 0}';\nh += '.pr{font-size:10pt;text-align:justify;line-height:1.5;margin-bottom:2mm;color:#333}';\nh += '.ex{margin-bottom:4mm}.exh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1mm}';\nh += '.ext{font-weight:bold;font-size:10.5pt;text-transform:uppercase}.exd{font-style:italic;font-size:9pt;color:#555}';\nh += '.exl{font-style:italic;font-size:9.5pt;color:#555;margin-bottom:1.5mm}';\nh += '.ca{margin-bottom:1mm;font-size:10pt;line-height:1.45;text-align:justify}.cn{font-weight:bold}';\nh += '.fm{margin-bottom:3mm}.fmh{display:flex;justify-content:space-between;align-items:baseline}';\nh += '.fmt{font-weight:bold;font-size:10.5pt;text-transform:uppercase}.fmd{font-style:italic;font-size:9pt;color:#555}';\nh += '.fml{font-style:italic;font-size:9.5pt;color:#555}.fmdt{font-size:9.5pt;color:#333;margin-top:0.5mm}';\nh += '.cl{margin-bottom:1.5mm;font-size:10pt;line-height:1.5}.cc{font-weight:bold}';\nh += '.it{font-size:10pt;color:#333}';\nh += '</style></head><body>';\n\nh += '<div class=\"hdr\"><h1>' + (cv.prenom_nom||'') + '</h1>';\nh += '<div class=\"ct\">';\nif (cv.telephone) h += 'Téléphone : ' + cv.telephone + '<br>';\nif (cv.email && cv.email !== 'non renseigné') h += 'Email : <a href=\"mailto:'+cv.email+'\">'+cv.email+'</a>';\nh += '</div>';\nif (cv.titre) h += '<div class=\"tt\">' + cv.titre + '</div>';\nh += '</div>';\n\nif (cv.profil) { h += '<div class=\"st\">Profil</div><div class=\"pr\">' + cv.profil + '</div>'; }\n\nif (cv.experiences?.length > 0) {\n  h += '<div class=\"st\">Expérience</div>';\n  for (const e of cv.experiences) {\n    h += '<div class=\"ex\"><div class=\"exh\"><span class=\"ext\">'+(e.poste||'')+'</span><span class=\"exd\">'+(e.dates||'')+'</span></div>';\n    if (e.lieu) h += '<div class=\"exl\">'+e.lieu+'</div>';\n    if (e.categories) { for (const c of e.categories) { h += '<div class=\"ca\"><span class=\"cn\">'+c.nom+' : </span>'+c.detail+'</div>'; } }\n    h += '</div>';\n  }\n}\n\nif (cv.formations?.length > 0) {\n  h += '<div class=\"st\">Formation</div>';\n  for (const f of cv.formations) {\n    h += '<div class=\"fm\"><div class=\"fmh\"><span class=\"fmt\">'+(f.diplome||'')+'</span><span class=\"fmd\">'+(f.dates||'')+'</span></div>';\n    if (f.lieu) h += '<div class=\"fml\">'+f.lieu+'</div>';\n    if (f.detail) h += '<div class=\"fmdt\">'+f.detail+'</div>';\n    h += '</div>';\n  }\n}\n\nif (cv.competences?.length > 0) {\n  h += '<div class=\"st\">Compétences</div>';\n  for (const c of cv.competences) { h += '<div class=\"cl\"><span class=\"cc\">'+c.categorie+' : </span>'+c.detail+'</div>'; }\n}\n\nif (cv.centres_interet) { h += '<div class=\"st\">Centres d\\'intérêt</div><div class=\"it\">'+cv.centres_interet+'</div>'; }\nh += '</body></html>';\n\n// Build summary for agent\nlet summary = 'CV GÉNÉRÉ ! Koda Score : ' + (score?.total || '?') + '/100\\n\\n';\nsummary += 'Titre : ' + (cv.titre || '') + '\\n';\nif (cv.experiences) { summary += '\\nExpériences :\\n'; cv.experiences.forEach(e => { summary += '- ' + e.poste + ' (' + (e.dates||'') + ')\\n'; }); }\nif (cv.formations) { summary += '\\nFormations :\\n'; cv.formations.forEach(f => { summary += '- ' + f.diplome + '\\n'; }); }\nif (score) {\n  summary += '\\nDétail score :\\n';\n  summary += '- Format : ' + (score.format?.score||'?') + '/25\\n';\n  summary += '- Contenu : ' + (score.contenu?.score||'?') + '/25\\n';\n  summary += '- Mots-clés : ' + (score.mots_cles?.score||'?') + '/25\\n';\n  summary += '- Impact : ' + (score.impact?.score||'?') + '/25\\n';\n  summary += '\\nAmélioration suggérée : ' + (score.top_improvement || 'Aucune') + '\\n';\n}\nsummary += '\\nPrésente ce récap au jeune avec le score et demande si c\\'est bon.';\n\nreturn [{ json: { response: summary, phase: 'generate', cv_html: h, cv_json: cv, koda_score: score } }];"
+      },
+      "id": "cv-html",
+      "name": "🎨 Construire HTML final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Créer le binary data pour Gotenberg\nconst htmlData = $('🎨 Construire HTML final').first().json;\n\nif (htmlData.phase !== 'generate' || !htmlData.cv_html) {\n  return [{ json: { ...htmlData, skip_pdf: true } }];\n}\n\n// btoa fonctionne en sandbox n8n pour de l'ASCII/Latin1\n// Pour l'UTF-8, on utilise encodeURIComponent + unescape\nconst html = htmlData.cv_html;\nconst base64 = btoa(unescape(encodeURIComponent(html)));\n\nreturn [{\n  json: { ...htmlData, skip_pdf: false },\n  binary: {\n    file: {\n      data: base64,\n      mimeType: 'text/html',\n      fileName: 'index.html'\n    }\n  }\n}];"
+      },
+      "id": "cv-tofile",
+      "name": "📦 HTML vers fichier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1850,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gotenberggotenberg8-production-8370.up.railway.app/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "cv-gotenberg",
+      "name": "📄 Gotenberg HTML→PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2050,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://jgqalweqpifycuhootmx.supabase.co/storage/v1/object/koda-cv/{{ $('🔧 Parser input').first().json.airtable_id }}_{{ Date.now() }}.pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=COLLER_VOTRE_SERVICE_ROLE_KEY_ICI"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer COLLER_VOTRE_SERVICE_ROLE_KEY_ICI"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/pdf"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "=data",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "cv-upload-pdf",
+      "name": "📤 Upload PDF Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2250,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construire la réponse avec le lien PDF\nconst htmlData = $('📦 HTML vers fichier').first().json;\nconst parsedInput = $('🔧 Parser input').first().json;\n\n// Construire l'URL publique du PDF\nconst uploadResp = $('📤 Upload PDF Supabase').first().json;\nconst key = uploadResp.Key || uploadResp.key || '';\nconst pdfUrl = key \n  ? 'https://jgqalweqpifycuhootmx.supabase.co/storage/v1/object/public/' + key\n  : '';\n\nreturn [{ json: {\n  response: htmlData.response,\n  phase: htmlData.phase,\n  cv_json: htmlData.cv_json,\n  koda_score: htmlData.koda_score,\n  cv_url: pdfUrl,\n  cv_id: key\n} }];"
+      },
+      "id": "cv-final",
+      "name": "✅ Résultat final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2450,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "⚡ Trigger": {
+      "main": [
+        [
+          {
+            "node": "🔧 Parser input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔧 Parser input": {
+      "main": [
+        [
+          {
+            "node": "📋 Charger profil complet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Charger profil complet": {
+      "main": [
+        [
+          {
+            "node": "📝 Construire prompt CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Construire prompt CV": {
+      "main": [
+        [
+          {
+            "node": "🧠 Claude Sonnet (CV)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Claude Sonnet (CV)": {
+      "main": [
+        [
+          {
+            "node": "🔍 Évaluer et Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Évaluer et Router": {
+      "main": [
+        [
+          {
+            "node": "🧠 Haiku Critique",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Haiku Critique": {
+      "main": [
+        [
+          {
+            "node": "🎨 Construire HTML final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎨 Construire HTML final": {
+      "main": [
+        [
+          {
+            "node": "📦 HTML vers fichier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📄 Gotenberg HTML→PDF": {
+      "main": [
+        [
+          {
+            "node": "📤 Upload PDF Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 HTML vers fichier": {
+      "main": [
+        [
+          {
+            "node": "📄 Gotenberg HTML→PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Upload PDF Supabase": {
+      "main": [
+        [
+          {
+            "node": "✅ Résultat final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "koda-cv-v2-adversarial",
+  "meta": {
+    "instanceId": "koda-les-ombres"
+  },
+  "tags": [
+    {
+      "name": "Koda"
+    }
+  ]
+}

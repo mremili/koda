@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 10.5pt;
+    line-height: 1.4;
+    color: #1a1a1a;
+    background: white;
+    width: 210mm;
+    min-height: 297mm;
+    padding: 18mm 20mm 15mm 20mm;
+  }
+
+  /* === EN-TÊTE === */
+  .header {
+    text-align: center;
+    margin-bottom: 6mm;
+  }
+
+  .header h1 {
+    font-size: 22pt;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    color: #1a1a1a;
+    margin-bottom: 2mm;
+  }
+
+  .header .contact {
+    font-size: 9.5pt;
+    color: #444;
+    line-height: 1.6;
+  }
+
+  .header .contact a {
+    color: #1a5276;
+    text-decoration: none;
+  }
+
+  .header .titre-poste {
+    font-size: 11pt;
+    font-style: italic;
+    color: #1a5276;
+    margin-top: 3mm;
+    margin-bottom: 1mm;
+  }
+
+  /* === SÉPARATEURS === */
+  .section-title {
+    text-align: center;
+    font-size: 11pt;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    margin-top: 5mm;
+    margin-bottom: 3mm;
+    position: relative;
+  }
+
+  .section-title::before,
+  .section-title::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    height: 1px;
+    background: #1a1a1a;
+    width: 25%;
+  }
+
+  .section-title::before { left: 0; }
+  .section-title::after { right: 0; }
+
+  /* === PROFIL === */
+  .profil {
+    font-size: 10pt;
+    text-align: justify;
+    line-height: 1.5;
+    margin-bottom: 2mm;
+    color: #333;
+  }
+
+  /* === EXPÉRIENCES === */
+  .experience {
+    margin-bottom: 4mm;
+  }
+
+  .experience .exp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 1mm;
+  }
+
+  .experience .exp-title {
+    font-weight: bold;
+    font-size: 10.5pt;
+    text-transform: uppercase;
+  }
+
+  .experience .exp-dates {
+    font-style: italic;
+    font-size: 9pt;
+    color: #555;
+    white-space: nowrap;
+  }
+
+  .experience .exp-lieu {
+    font-style: italic;
+    font-size: 9.5pt;
+    color: #555;
+    margin-bottom: 1.5mm;
+  }
+
+  .experience .exp-missions {
+    font-size: 10pt;
+    line-height: 1.45;
+    text-align: justify;
+  }
+
+  .experience .exp-missions .cat {
+    margin-bottom: 1mm;
+  }
+
+  .experience .exp-missions .cat-name {
+    font-weight: bold;
+  }
+
+  /* === FORMATION === */
+  .formation {
+    margin-bottom: 3mm;
+  }
+
+  .formation .form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .formation .form-title {
+    font-weight: bold;
+    font-size: 10.5pt;
+    text-transform: uppercase;
+  }
+
+  .formation .form-dates {
+    font-style: italic;
+    font-size: 9pt;
+    color: #555;
+  }
+
+  .formation .form-lieu {
+    font-style: italic;
+    font-size: 9.5pt;
+    color: #555;
+  }
+
+  .formation .form-detail {
+    font-size: 9.5pt;
+    color: #333;
+    margin-top: 0.5mm;
+  }
+
+  /* === COMPÉTENCES === */
+  .competences {
+    font-size: 10pt;
+    line-height: 1.5;
+  }
+
+  .competences .comp-line {
+    margin-bottom: 1.5mm;
+  }
+
+  .competences .comp-cat {
+    font-weight: bold;
+  }
+
+  /* === CENTRES D'INTÉRÊT === */
+  .interets {
+    font-size: 10pt;
+    color: #333;
+  }
+</style>
+</head>
+<body>
+
+<!-- EN-TÊTE -->
+<div class="header">
+  <h1>{{PRENOM}} {{NOM}}</h1>
+  <div class="contact">
+    Téléphone : {{TELEPHONE}}<br>
+    Email : <a href="mailto:{{EMAIL}}">{{EMAIL}}</a>
+  </div>
+  <div class="titre-poste">{{TITRE}}</div>
+</div>
+
+<!-- PROFIL -->
+<div class="section-title">Profil</div>
+<div class="profil">
+  {{PROFIL}}
+</div>
+
+<!-- EXPÉRIENCE PROFESSIONNELLE -->
+<div class="section-title">Expérience</div>
+
+{{#EXPERIENCES}}
+<div class="experience">
+  <div class="exp-header">
+    <span class="exp-title">{{POSTE}}</span>
+    <span class="exp-dates">{{DATES}}</span>
+  </div>
+  <div class="exp-lieu">{{LIEU}}</div>
+  <div class="exp-missions">
+    {{#CATEGORIES}}
+    <div class="cat">
+      <span class="cat-name">{{CAT_NOM}} : </span>{{CAT_DETAIL}}
+    </div>
+    {{/CATEGORIES}}
+  </div>
+</div>
+{{/EXPERIENCES}}
+
+<!-- FORMATION -->
+<div class="section-title">Formation</div>
+
+{{#FORMATIONS}}
+<div class="formation">
+  <div class="form-header">
+    <span class="form-title">{{DIPLOME}}</span>
+    <span class="form-dates">{{DATES}}</span>
+  </div>
+  <div class="form-lieu">{{LIEU}}</div>
+  {{#DETAIL}}
+  <div class="form-detail">{{DETAIL}}</div>
+  {{/DETAIL}}
+</div>
+{{/FORMATIONS}}
+
+<!-- COMPÉTENCES -->
+<div class="section-title">Compétences</div>
+<div class="competences">
+  {{#COMPETENCES}}
+  <div class="comp-line">
+    <span class="comp-cat">{{COMP_CAT}} : </span>{{COMP_DETAIL}}
+  </div>
+  {{/COMPETENCES}}
+</div>
+
+<!-- CENTRES D'INTÉRÊT -->
+{{#HAS_INTERETS}}
+<div class="section-title">Centres d'intérêt</div>
+<div class="interets">
+  {{INTERETS}}
+</div>
+{{/HAS_INTERETS}}
+
+</body>
+</html>
